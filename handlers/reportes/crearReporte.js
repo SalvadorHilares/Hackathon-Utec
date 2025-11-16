@@ -1,10 +1,12 @@
 const { getItem, putItem, generateUUID, getTimestamp } = require('../../shared/dynamodb');
 const { validateCrearReporte, createResponse } = require('../../shared/validations');
 const { startExecution } = require('../../shared/stepfunctions');
+const { sendNotification } = require('../../shared/sns');
 
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
+const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN;
 const STEP_FUNCTIONS_NAME = process.env.STEP_FUNCTIONS_NAME;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
 
@@ -79,33 +81,41 @@ async function handler(event) {
     
     await putItem(TABLA_HISTORIAL, historial);
     
-    // Actualizar estado a "en_atencion" e iniciar Step Functions
-    const estadoEnAtencion = {
-      ...estado,
-      timestamp: getTimestamp(),
-      estado: 'en_atencion',
-      detalles_estado: [{
-        message: 'Reporte en atención',
-        actualizado_por: body.usuario_id,
-        start_time: getTimestamp(),
-        end_time: '',
-        notes: 'Reporte movido a estado en atención'
-      }]
-    };
-    
-    await putItem(TABLA_ESTADOS, estadoEnAtencion);
-    
-    // Actualizar reporte con estado
-    reporte.estado = 'en_atencion';
-    reporte.fecha_actualizacion = getTimestamp();
-    await putItem(TABLA_REPORTES, reporte);
-    
-    // Iniciar Step Functions workflow (si hay trabajador asignado)
-    if (body.trabajador_asignado) {
-      await startExecution(STEP_FUNCTIONS_NAME, {
-        reporte_id,
-        trabajador_id: body.trabajador_asignado
-      });
+    // Enviar notificación SNS al admin cuando se crea un reporte
+    try {
+      await sendNotification(
+        SNS_TOPIC_ARN,
+        'Nuevo Reporte Creado',
+        JSON.stringify({
+          reporte_id,
+          tipo: reporte.tipo,
+          ubicacion: reporte.ubicacion,
+          descripcion: reporte.descripcion,
+          nivel_urgencia: reporte.nivel_urgencia,
+          usuario_id: reporte.usuario_id,
+          estado: reporte.estado,
+          tipo_notificacion: 'nuevo_reporte',
+          timestamp: fecha_creacion
+        }),
+        {
+          nivel_urgencia: {
+            DataType: 'String',
+            StringValue: reporte.nivel_urgencia
+          },
+          tipo: {
+            DataType: 'String',
+            StringValue: reporte.tipo
+          },
+          tipo_notificacion: {
+            DataType: 'String',
+            StringValue: 'nuevo_reporte'
+          }
+        }
+      );
+      console.log('Notificación SNS enviada al admin para nuevo reporte');
+    } catch (snsError) {
+      console.error('Error al enviar notificación SNS al admin:', snsError);
+      // No fallar la operación si falla la notificación
     }
     
     return createResponse(201, {

@@ -214,6 +214,11 @@ functions:
 
   procesarNotificacionSNS:
     handler: handlers/soporte/procesarNotificacionSNS.handler
+    events:
+      - sns:
+          arn:
+            Ref: SNSTopicNotificaciones
+          topicName: hackathon-utec-notificaciones-${self:provider.stage}
     environment:
       SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
       TABLA_REPORTES: ${self:custom.tablas.reportes}
