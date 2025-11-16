@@ -165,8 +165,13 @@ const nuevoReporte = await crearReporte({
 - `estado` (opcional): `pendiente` | `en_atencion` | `resuelto`
 - `tipo` (opcional): `seguridad` | `mantenimiento` | `limpieza` | `otro`
 - `nivel_urgencia` (opcional): `baja` | `media` | `alta` | `critica`
+- `orderBy` (opcional): `urgencia` (default) | `fecha` - Ordenamiento de resultados
 - `limit` (opcional): Número de resultados (default: 50)
 - `lastKey` (opcional): Para paginación
+
+**Ordenamiento:**
+- `orderBy=urgencia` (default): Ordena por nivel de urgencia (critica > alta > media > baja), luego por fecha más reciente
+- `orderBy=fecha`: Ordena solo por fecha de creación (más reciente primero)
 
 **Ejemplos de URLs:**
 ```
@@ -175,6 +180,8 @@ GET /reportes?estado=pendiente
 GET /reportes?tipo=seguridad&nivel_urgencia=alta
 GET /reportes?usuario_id=user-123
 GET /reportes?estado=pendiente&tipo=mantenimiento&limit=20
+GET /reportes?estado=pendiente&orderBy=urgencia  # Ordenar por urgencia (default)
+GET /reportes?estado=pendiente&orderBy=fecha     # Ordenar solo por fecha
 ```
 
 **Response (200):**
@@ -212,6 +219,7 @@ async function listarReportes(filtros = {}) {
   if (filtros.estado) params.append('estado', filtros.estado);
   if (filtros.tipo) params.append('tipo', filtros.tipo);
   if (filtros.nivel_urgencia) params.append('nivel_urgencia', filtros.nivel_urgencia);
+  if (filtros.orderBy) params.append('orderBy', filtros.orderBy); // 'urgencia' o 'fecha'
   if (filtros.limit) params.append('limit', filtros.limit);
   if (filtros.lastKey) params.append('lastKey', filtros.lastKey);
   
@@ -225,13 +233,25 @@ async function listarReportes(filtros = {}) {
 }
 
 // Uso
-const reportesPendientes = await listarReportes({ estado: 'pendiente' });
+const reportesPendientes = await listarReportes({ estado: 'pendiente' }); // Ordenado por urgencia (default)
 const reportesUsuario = await listarReportes({ usuario_id: 'user-123' });
 const reportesFiltrados = await listarReportes({
   estado: 'pendiente',
   tipo: 'seguridad',
   nivel_urgencia: 'alta',
   limit: 20
+});
+
+// Ordenar por urgencia (prioriza críticos y altos)
+const reportesPorUrgencia = await listarReportes({
+  estado: 'pendiente',
+  orderBy: 'urgencia' // critica > alta > media > baja, luego por fecha
+});
+
+// Ordenar solo por fecha
+const reportesPorFecha = await listarReportes({
+  estado: 'pendiente',
+  orderBy: 'fecha' // Más recientes primero
 });
 ```
 
@@ -724,15 +744,17 @@ mostrarDetalleReporte(detalle);
 
 ### 🟢 Flujo: Administrador
 
-#### 1. Ver Panel de Reportes (con Filtros)
+#### 1. Ver Panel de Reportes (con Filtros y Priorización)
 ```javascript
-// 1. Cargar todos los reportes pendientes
+// 1. Cargar todos los reportes pendientes ordenados por urgencia
+// Los reportes críticos y de alta urgencia aparecerán primero
 const reportesPendientes = await listarReportes({
   estado: 'pendiente',
+  orderBy: 'urgencia', // Prioriza: critica > alta > media > baja
   limit: 50
 });
 
-// Mostrar en tabla/lista
+// Mostrar en tabla/lista (ya vienen ordenados por prioridad)
 mostrarReportesEnTabla(reportesPendientes.reportes);
 ```
 
@@ -755,24 +777,33 @@ wsManager.onEstadoUpdate = (data) => {
 wsManager.connect();
 ```
 
-#### 3. Filtrar Reportes
+#### 3. Filtrar y Priorizar Reportes
 ```javascript
-// 3. Aplicar filtros
+// 3. Aplicar filtros con priorización
 async function aplicarFiltros(filtros) {
   const reportes = await listarReportes({
     estado: filtros.estado,        // 'pendiente', 'en_atencion', 'resuelto'
     tipo: filtros.tipo,            // 'seguridad', 'mantenimiento', etc.
     nivel_urgencia: filtros.urgencia, // 'baja', 'media', 'alta', 'critica'
+    orderBy: filtros.orderBy || 'urgencia', // 'urgencia' o 'fecha'
     limit: 50
   });
   
+  // Los reportes ya vienen ordenados por prioridad
   actualizarListaReportes(reportes.reportes);
 }
 
-// Ejemplo: Filtrar por urgencia alta
+// Ejemplo: Filtrar por urgencia alta, ordenados por urgencia
 aplicarFiltros({
   estado: 'pendiente',
-  urgencia: 'alta'
+  urgencia: 'alta',
+  orderBy: 'urgencia' // Los críticos aparecen antes que los altos
+});
+
+// Ejemplo: Ver todos los pendientes priorizados
+aplicarFiltros({
+  estado: 'pendiente',
+  orderBy: 'urgencia' // critica > alta > media > baja
 });
 ```
 
@@ -902,28 +933,43 @@ function marcarTerminado(reporteId, taskToken, comentarios, imagenes) {
 | `estado` | `pendiente`, `en_atencion`, `resuelto` | Filtrar por estado |
 | `tipo` | `seguridad`, `mantenimiento`, `limpieza`, `otro` | Filtrar por tipo |
 | `nivel_urgencia` | `baja`, `media`, `alta`, `critica` | Filtrar por urgencia |
+| `orderBy` | `urgencia` (default), `fecha` | Ordenamiento de resultados |
 | `limit` | Número (default: 50) | Límite de resultados |
 | `lastKey` | String | Para paginación |
+
+**Ordenamiento por Urgencia (`orderBy=urgencia`):**
+- Prioriza reportes críticos y de alta urgencia
+- Orden: `critica` > `alta` > `media` > `baja`
+- Si tienen la misma urgencia, ordena por fecha más reciente
+- **Recomendado para panel administrativo**
 
 ### Ejemplos de Filtros Combinados
 
 ```javascript
-// Reportes pendientes de alta urgencia
+// Reportes pendientes ordenados por urgencia (recomendado para admin)
 const urgentes = await listarReportes({
   estado: 'pendiente',
-  nivel_urgencia: 'alta'
+  orderBy: 'urgencia' // critica y alta aparecen primero
 });
 
-// Reportes de seguridad en atención
+// Reportes de seguridad en atención ordenados por fecha
 const seguridad = await listarReportes({
   tipo: 'seguridad',
-  estado: 'en_atencion'
+  estado: 'en_atencion',
+  orderBy: 'fecha' // más recientes primero
 });
 
-// Mis reportes pendientes
+// Mis reportes pendientes (ordenados por urgencia por defecto)
 const misPendientes = await listarReportes({
   usuario_id: 'user-123',
   estado: 'pendiente'
+});
+
+// Panel admin: Todos los pendientes priorizados por urgencia
+const panelAdmin = await listarReportes({
+  estado: 'pendiente',
+  orderBy: 'urgencia', // Los críticos y altos aparecen primero
+  limit: 50
 });
 ```
 

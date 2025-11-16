@@ -61,8 +61,29 @@ async function handler(event) {
       );
     }
     
-    // Ordenar por fecha_creacion descendente
-    reportes.sort((a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion));
+    // Ordenar reportes según prioridad
+    const orderBy = queryParams.orderBy || 'urgencia'; // 'urgencia' o 'fecha'
+    
+    if (orderBy === 'urgencia') {
+      // Ordenar por urgencia primero (critica > alta > media > baja), luego por fecha
+      const ordenUrgencia = { 'critica': 4, 'alta': 3, 'media': 2, 'baja': 1 };
+      
+      reportes.sort((a, b) => {
+        const urgenciaA = ordenUrgencia[a.nivel_urgencia] || 0;
+        const urgenciaB = ordenUrgencia[b.nivel_urgencia] || 0;
+        
+        // Si tienen diferente urgencia, ordenar por urgencia (mayor primero)
+        if (urgenciaA !== urgenciaB) {
+          return urgenciaB - urgenciaA;
+        }
+        
+        // Si tienen la misma urgencia, ordenar por fecha (más reciente primero)
+        return new Date(b.fecha_creacion) - new Date(a.fecha_creacion);
+      });
+    } else {
+      // Ordenar solo por fecha_creacion descendente
+      reportes.sort((a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion));
+    }
     
     // Aplicar paginación simple
     const startIndex = lastKey ? parseInt(lastKey) : 0;
