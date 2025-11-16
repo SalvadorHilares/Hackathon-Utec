@@ -7,7 +7,7 @@ provider:
   memorySize: 1024
   timeout: 29
   iam:
-    role: arn:aws:iam::755311132141:role/LabRole
+    role: arn:aws:iam::414484658875:role/LabRole
   environment:
     TENANT_ID: utec
     STAGE: ${self:provider.stage}
