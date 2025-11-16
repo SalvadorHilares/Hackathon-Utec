@@ -472,53 +472,13 @@ resources:
                 Fn::GetAtt:
                   - ActualizarEstadoFinalLambdaFunction
                   - Arn
-        RoleArn:
-          Fn::GetAtt:
-            - StepFunctionsExecutionRole
-            - Arn
+        RoleArn: arn:aws:iam::755311132141:role/LabRole
       DependsOn:
         - ActualizarEstadoInicialLambdaFunction
         - EnCaminoLambdaFunction
         - TrabajadorLlegoLambdaFunction
         - TrabajoTerminadoLambdaFunction
         - ActualizarEstadoFinalLambdaFunction
-
-    # IAM Role para Step Functions
-    StepFunctionsExecutionRole:
-      Type: AWS::IAM::Role
-      Properties:
-        RoleName: StepFunctionsExecutionRole-${self:provider.stage}
-        AssumeRolePolicyDocument:
-          Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Principal:
-                Service: states.amazonaws.com
-              Action: sts:AssumeRole
-        Policies:
-          - PolicyName: StepFunctionsExecutionPolicy
-            PolicyDocument:
-              Version: "2012-10-17"
-              Statement:
-                - Effect: Allow
-                  Action:
-                    - lambda:InvokeFunction
-                  Resource:
-                    - Fn::GetAtt:
-                        - ActualizarEstadoInicialLambdaFunction
-                        - Arn
-                    - Fn::GetAtt:
-                        - EnCaminoLambdaFunction
-                        - Arn
-                    - Fn::GetAtt:
-                        - TrabajadorLlegoLambdaFunction
-                        - Arn
-                    - Fn::GetAtt:
-                        - TrabajoTerminadoLambdaFunction
-                        - Arn
-                    - Fn::GetAtt:
-                        - ActualizarEstadoFinalLambdaFunction
-                        - Arn
 
   Outputs:
     TablaReportesArn:
