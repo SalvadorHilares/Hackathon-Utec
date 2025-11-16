@@ -8,12 +8,17 @@
 
 1. [Configuración Inicial](#configuración-inicial)
 2. [Arquitectura del Sistema](#arquitectura-del-sistema)
+   - [Diagrama de Arquitectura General](#diagrama-de-arquitectura-general)
+   - [Flujo Completo: Admin y Trabajador](#flujo-completo-admin-y-trabajador)
 3. [Endpoints REST API](#endpoints-rest-api)
 4. [WebSocket - Actualizaciones en Tiempo Real](#websocket---actualizaciones-en-tiempo-real)
 5. [Flujos Completos por Rol](#flujos-completos-por-rol)
 6. [Filtros y Búsqueda](#filtros-y-búsqueda)
 7. [Manejo de Errores](#manejo-de-errores)
 8. [Ejemplos de Código](#ejemplos-de-código)
+9. [Apache Airflow - Orquestación y Automatización](#-apache-airflow---orquestación-y-automatización)
+   - [Integración con el Sistema Serverless](#integración-con-el-sistema-serverless)
+10. [Notificaciones SNS](#-notificaciones-sns-simple-notification-service)
 
 ---
 
@@ -34,6 +39,18 @@ const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
 ---
 
 ## 🏗️ Arquitectura del Sistema
+
+### Diagrama de Arquitectura General
+
+La siguiente imagen muestra la arquitectura completa del sistema con los microservicios principales, flujo de validación de seguridad, y componentes AWS:
+
+![Arquitectura General del Sistema](Hackathon-Página-1.drawio.png)
+
+**Componentes principales:**
+- **Microservicio de Usuarios**: Maneja registro y autenticación (excluido en esta implementación)
+- **Microservicio de Estado**: Gestiona conexiones WebSocket y estados en tiempo real
+- **Microservicio de Reporte**: Procesa creación, actualización y gestión de reportes
+- **Flujo de Validación de Seguridad**: Valida tokens JWT y políticas (excluido en esta implementación)
 
 ### Componentes Principales
 
@@ -72,6 +89,25 @@ const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
 │              └─────────────────────┘                    │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### Flujo Completo: Admin y Trabajador
+
+La siguiente imagen detalla el flujo completo del sistema incluyendo:
+- **Panel Administrativo**: Visualización, filtrado y asignación de reportes
+- **Flujo de Trabajador**: Proceso completo desde asignación hasta finalización usando AWS Step Functions
+- **WebSocket para Trabajadores**: Actualizaciones en tiempo real del estado del trabajo
+- **Historial y Trazabilidad**: Registro completo de todas las acciones
+
+![Flujo Completo Admin y Trabajador](Hackathon-Página-2.drawio.png)
+
+**Flujos principales:**
+1. **Creación de Reporte** → Actualización de estado a "pendiente" → Notificación al admin
+2. **Asignación de Trabajador** → Inicio de Step Functions → Notificación al trabajador
+3. **Workflow Step Functions**: 
+   - Trabajador acepta reporte → Estado "en camino"
+   - Trabajador llegó → Estado "llegó"
+   - Trabajo terminado → Guardado en S3 → Estado "resuelto"
+4. **Actualizaciones en Tiempo Real**: WebSocket notifica cambios a todos los clientes conectados
 
 ### Tablas DynamoDB
 
@@ -1241,6 +1277,495 @@ function ListaReportes() {
 5. **Paginación**: Usa `limit` y `lastKey` para paginar resultados grandes.
 
 6. **Task Tokens**: Los trabajadores reciben `task_token` cuando se les asigna un reporte (vía SNS o otro mecanismo). Este token es necesario para actualizar estados.
+
+---
+
+## 🔄 Apache Airflow - Orquestación y Automatización
+
+### ¿Qué es Airflow en este sistema?
+
+Apache Airflow se encarga de tareas automatizadas que complementan el sistema serverless:
+
+- **Clasificación Automática**: Clasifica reportes pendientes y notifica a áreas responsables
+- **Reportes Estadísticos**: Genera reportes diarios y semanales automáticamente
+- **Integración con DynamoDB**: Lee datos de las tablas para análisis y procesamiento
+
+### Integración con el Sistema Serverless
+
+La siguiente imagen muestra cómo Apache Airflow se integra con el sistema serverless:
+
+![Integración Apache Airflow](Hackathon-Página-3.drawio.png)
+
+**Flujo de integración:**
+1. **Creación de Reporte** → Se guarda en `TablaReportes` → Se envía notificación SNS
+2. **DynamoDB Stream** → Detecta nuevos reportes → Airflow procesa automáticamente
+3. **DAG 1: Clasificación Automática**: 
+   - Escanea reportes pendientes sin clasificar
+   - Clasifica por tipo/urgencia
+   - Notifica a área responsable vía SNS
+4. **DAG 2: Reportes Estadísticos Diarios**: 
+   - Se ejecuta diariamente a las 8 AM
+   - Genera estadísticas del día anterior
+   - Guarda en S3
+5. **DAG 3: Reportes Estadísticos Semanales**: 
+   - Se ejecuta los lunes a las 9 AM
+   - Genera estadísticas de la semana anterior
+   - Guarda en S3
+
+### Arquitectura
+
+```
+EC2 Instance (t2.large)
+├── Docker
+│   ├── PostgreSQL Container (Base de datos Airflow)
+│   └── Airflow Container (Webserver + Scheduler)
+│       └── DAGs
+│           ├── clasificar_reportes.py
+│           ├── reportes_estadisticos_diarios.py
+│           └── reportes_estadisticos_semanales.py
+└── IAM Role (LabRole) → Acceso a DynamoDB, SNS, S3
+```
+
+### Despliegue
+
+#### 1. Crear Stack CloudFormation
+
+```bash
+aws cloudformation create-stack \
+  --stack-name airflow-hackathon-utec \
+  --template-body file://plantilla_crear_mv_airflow.yaml \
+  --parameters ParameterKey=InstanceName,ParameterValue=Airflow-Hackathon-UTEC
+```
+
+#### 2. Esperar a que la instancia se inicialice
+
+El UserData script debería automáticamente:
+- Instalar Docker y Docker Compose
+- Descargar docker-compose.yaml oficial de Apache Airflow 2.10.3
+- Inicializar Airflow
+- Iniciar todos los servicios
+
+**Nota importante**: En algunas cuentas de estudiante, el UserData script puede fallar debido a errores en la instalación de paquetes del sistema. Si esto ocurre, ver la sección "Instalación Manual" en Troubleshooting.
+
+#### 3. Verificar que la instancia esté lista
+
+Espera 5-10 minutos después del despliegue para que el UserData script complete la instalación. Puedes verificar el estado con:
+
+```bash
+# Verificar estado de la instancia
+aws cloudformation describe-stacks \
+  --stack-name airflow-hackathon-utec \
+  --query 'Stacks[0].StackStatus' \
+  --output text
+
+# Obtener IP pública
+aws cloudformation describe-stacks \
+  --stack-name airflow-hackathon-utec \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstancePublicIP`].OutputValue' \
+  --output text
+```
+
+#### 4. Copiar DAGs a la instancia EC2
+
+**Opción A: Usar SCP (requiere archivo vockey.pem)**
+
+```bash
+# Obtener IP pública de la instancia
+INSTANCE_IP=$(aws cloudformation describe-stacks \
+  --stack-name airflow-hackathon-utec \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstancePublicIP`].OutputValue' \
+  --output text)
+
+# Copiar DAGs (asegúrate de tener vockey.pem en el directorio actual)
+scp -i vockey.pem airflow/dags/*.py ubuntu@$INSTANCE_IP:/home/ubuntu/airflow/dags/
+```
+
+**Opción B: Crear DAGs directamente en EC2 (recomendado si no tienes vockey.pem)**
+
+Si no tienes acceso al archivo `vockey.pem` o SCP falla, puedes crear los DAGs directamente en la EC2:
+
+1. Conéctate a la EC2 (desde AWS Console o Systems Manager)
+2. Navega al directorio de DAGs:
+   ```bash
+   cd /home/ubuntu/airflow/dags
+   ```
+3. Crea cada archivo usando `nano` o `cat`:
+   ```bash
+   # Usar nano para crear y editar
+   nano clasificar_reportes.py
+   # Pegar el contenido completo del archivo local
+   # Guardar: Ctrl+X, luego Y, luego Enter
+   
+   nano reportes_estadisticos_diarios.py
+   # Pegar contenido, guardar
+   
+   nano reportes_estadisticos_semanales.py
+   # Pegar contenido, guardar
+   ```
+4. Verificar que los archivos se crearon:
+   ```bash
+   ls -la /home/ubuntu/airflow/dags/
+   ```
+
+Los DAGs aparecerán automáticamente en Airflow UI en 30-60 segundos.
+
+#### 5. Verificar que los DAGs aparezcan en Airflow UI
+
+1. Accede a `http://<EC2_IP>:8080`
+2. Inicia sesión con `airflow` / `airflow`
+3. Deberías ver 3 DAGs en la lista:
+   - `clasificar_reportes_automatico`
+   - `reportes_estadisticos_diarios`
+   - `reportes_estadisticos_semanales`
+
+Si no aparecen:
+- Espera 30-60 segundos (Airflow escanea DAGs periódicamente)
+- Verifica logs del scheduler: `docker compose logs airflow-scheduler | tail -20`
+- Verifica que los archivos estén en `/home/ubuntu/airflow/dags/` con permisos correctos
+
+#### 6. Verificar estado de Airflow (opcional)
+
+```bash
+# Desde la EC2, verificar contenedores
+cd /home/ubuntu/airflow
+docker compose ps
+
+# Ver logs de servicios específicos
+docker compose logs airflow-scheduler
+docker compose logs airflow-webserver
+```
+
+#### 7. Acceder a Airflow UI
+
+```
+http://<EC2_PUBLIC_IP>:8080
+```
+
+**Credenciales por defecto:**
+- Usuario: `airflow`
+- Contraseña: `airflow`
+
+**Nota:** Cambiar la contraseña después del primer acceso.
+
+### DAGs Disponibles
+
+#### 1. clasificar_reportes_automatico
+
+**Schedule:** Cada 5 minutos (`*/5 * * * *`)
+
+**Funcionalidad:**
+- Escanea `TablaReportes-dev` para reportes pendientes sin clasificar
+- Clasifica por tipo y asigna área responsable:
+  - `seguridad` → area-seguridad@utec.edu.pe
+  - `mantenimiento` → area-mantenimiento@utec.edu.pe
+  - `limpieza` → area-limpieza@utec.edu.pe
+  - `otro` → area-general@utec.edu.pe
+- Actualiza reporte con campos `clasificado_automaticamente` y `area_responsable`
+- Envía notificación SNS al área correspondiente
+
+**Tags:** `clasificacion`, `notificaciones`, `dynamodb`
+
+#### 2. reportes_estadisticos_diarios
+
+**Schedule:** Diario a las 8 AM (`0 8 * * *`)
+
+**Funcionalidad:**
+- Consulta `TablaReportes-dev` y `TablaEstados-dev` del día anterior
+- Calcula estadísticas:
+  - Total de reportes
+  - Distribución por tipo
+  - Distribución por urgencia
+  - Distribución por estado
+  - Reportes críticos
+- Genera JSON con estadísticas
+- Guarda en S3: `s3://hackathon-utec-reportes-dev/reportes-estadisticos/diarios/YYYY-MM-DD.json`
+
+**Tags:** `reportes`, `estadisticas`, `diario`, `s3`
+
+#### 3. reportes_estadisticos_semanales
+
+**Schedule:** Lunes a las 9 AM (`0 9 * * 1`)
+
+**Funcionalidad:**
+- Consulta reportes de la semana anterior (lunes a domingo)
+- Calcula estadísticas semanales:
+  - Total de reportes
+  - Distribución por tipo, urgencia, estado
+  - Tendencias: día más activo, tipo más común, urgencia más común
+  - Reportes críticos
+- Genera JSON con estadísticas
+- Guarda en S3: `s3://hackathon-utec-reportes-dev/reportes-estadisticos/semanales/semana-YYYY-MM-DD.json`
+
+**Tags:** `reportes`, `estadisticas`, `semanal`, `s3`
+
+### Variables de Entorno
+
+Las siguientes variables de entorno están configuradas en el `.env` de Airflow:
+
+```bash
+AWS_DEFAULT_REGION=us-east-1
+DYNAMODB_TABLA_REPORTES=TablaReportes-dev
+DYNAMODB_TABLA_ESTADOS=TablaEstados-dev
+DYNAMODB_TABLA_HISTORIAL=TablaHistorial-dev
+SNS_TOPIC_ARN=arn:aws:sns:us-east-1:755311132141:hackathon-utec-notificaciones-dev
+S3_BUCKET_REPORTES=hackathon-utec-reportes-dev
+```
+
+### Integración con el Sistema
+
+Airflow se integra con el sistema serverless mediante:
+
+1. **DynamoDB**: Lee reportes de `TablaReportes-dev` para clasificación y análisis
+2. **SNS**: Envía notificaciones cuando clasifica reportes automáticamente
+3. **S3**: Guarda reportes estadísticos generados
+
+### Monitoreo y Logs
+
+- **Airflow UI**: Acceso a logs de DAGs, historial de ejecuciones, y estado de tareas
+- **Logs de EC2**: `/var/log/airflow-setup.log` contiene el log de inicialización
+- **Logs de Docker**: `docker compose logs` en el directorio `/home/ubuntu/airflow/`
+
+### Scripts de Utilidad
+
+Se han creado scripts para facilitar el manejo de Airflow:
+
+- **`scripts/copiar-dags-airflow.sh`**: Copia automáticamente los DAGs a la instancia EC2
+- **`scripts/verificar-airflow.sh`**: Verifica el estado de Airflow y contenedores
+
+### Comandos Útiles
+
+```bash
+# Conectarse a la instancia EC2
+INSTANCE_IP=$(aws cloudformation describe-stacks \
+  --stack-name airflow-hackathon-utec \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstancePublicIP`].OutputValue' \
+  --output text)
+ssh -i vockey.pem ubuntu@$INSTANCE_IP
+
+# Una vez conectado, ver estado de contenedores
+cd /home/ubuntu/airflow
+docker compose ps
+
+# Ver logs de Airflow
+docker compose logs -f airflow-webserver
+docker compose logs -f airflow-scheduler
+
+# Reiniciar servicios
+docker compose restart
+
+# Detener servicios
+docker compose down
+
+# Iniciar servicios
+docker compose up -d
+
+# Ver DAGs instalados
+ls -la /home/ubuntu/airflow/dags/
+```
+
+### Troubleshooting
+
+#### Problemas Comunes y Soluciones
+
+1. **Airflow UI no accesible**
+   - Verificar Security Group permite puerto 8080 desde tu IP
+   - Verificar que los contenedores estén corriendo: `docker compose ps`
+   - Verificar logs: `docker compose logs airflow-webserver`
+
+2. **DAGs no aparecen en Airflow UI**
+   - Verificar que los archivos estén en `/home/ubuntu/airflow/dags/`
+   - Verificar permisos: `ls -la /home/ubuntu/airflow/dags/`
+   - Los archivos deben tener extensión `.py`
+   - Esperar 30-60 segundos para que Airflow detecte los nuevos DAGs
+   - Verificar logs del scheduler: `docker compose logs airflow-scheduler | grep -i error`
+
+3. **UserData script no se ejecutó completamente**
+   - **Síntoma**: Docker instalado pero directorio `/home/ubuntu/airflow` no existe
+   - **Causa**: Error durante la instalación de paquetes en UserData
+   - **Solución**: Ejecutar manualmente los pasos de instalación (ver sección "Instalación Manual" abajo)
+
+4. **Error de conexión a DynamoDB**
+   - Verificar que el IAM Role (LabRole) tenga permisos:
+     - `dynamodb:Scan`, `dynamodb:Query`, `dynamodb:GetItem`, `dynamodb:UpdateItem`
+   - Verificar que las variables de entorno en `.env` sean correctas
+   - Verificar región AWS: `AWS_DEFAULT_REGION=us-east-1`
+
+5. **DAGs fallan al ejecutarse**
+   - Revisar logs en Airflow UI (click en el DAG → View Logs)
+   - Revisar logs desde terminal: `docker compose logs airflow-scheduler`
+   - Verificar que boto3 esté instalado en los contenedores
+   - Verificar que las credenciales AWS estén disponibles (IAM Role)
+
+6. **Contenedores no inician**
+   - Verificar espacio en disco: `df -h`
+   - Verificar logs: `docker compose logs`
+   - Reiniciar servicios: `docker compose restart`
+
+### Instalación Manual (Si UserData falla)
+
+Si el UserData script no se ejecutó completamente (común en cuentas de estudiante), sigue estos pasos:
+
+#### Verificar Estado Inicial
+
+```bash
+# Verificar si Docker está instalado
+docker --version
+
+# Verificar si existe el directorio airflow
+ls -la /home/ubuntu/airflow
+```
+
+#### Pasos de Instalación Manual
+
+```bash
+# 1. Agregar usuario al grupo docker
+sudo usermod -aG docker ubuntu
+newgrp docker
+
+# 2. Crear directorios
+mkdir -p /home/ubuntu/airflow/{dags,logs,plugins,config}
+
+# 3. Ir al directorio
+cd /home/ubuntu/airflow
+
+# 4. Descargar docker-compose.yaml oficial
+curl -LfO 'https://airflow.apache.org/docs/apache-airflow/2.10.3/docker-compose.yaml'
+
+# 5. Crear archivo .env
+echo -e "AIRFLOW_UID=$(id -u)" > .env
+cat >> .env << 'EOF'
+AWS_DEFAULT_REGION=us-east-1
+DYNAMODB_TABLA_REPORTES=TablaReportes-dev
+DYNAMODB_TABLA_ESTADOS=TablaEstados-dev
+DYNAMODB_TABLA_HISTORIAL=TablaHistorial-dev
+SNS_TOPIC_ARN=arn:aws:sns:us-east-1:755311132141:hackathon-utec-notificaciones-dev
+S3_BUCKET_REPORTES=hackathon-utec-reportes-dev
+EOF
+
+# 6. Inicializar Airflow (tarda 5-10 minutos)
+docker compose up airflow-init
+
+# 7. Iniciar servicios
+docker compose up -d
+
+# 8. Verificar estado
+docker compose ps
+```
+
+#### Copiar DAGs Manualmente
+
+Si no puedes usar `scp` (por falta de archivo `vockey.pem`), crea los DAGs directamente en la EC2:
+
+```bash
+cd /home/ubuntu/airflow/dags
+
+# Opción A: Usar nano
+nano clasificar_reportes.py
+# Pegar contenido del archivo local, guardar con Ctrl+X, Y, Enter
+
+nano reportes_estadisticos_diarios.py
+# Pegar contenido, guardar
+
+nano reportes_estadisticos_semanales.py
+# Pegar contenido, guardar
+
+# Opción B: Usar cat con heredoc (más rápido)
+# Ver sección "Crear DAGs con cat" abajo
+```
+
+#### Verificar que los DAGs se detectaron
+
+```bash
+# Ver archivos creados
+ls -la /home/ubuntu/airflow/dags/
+
+# Ver logs del scheduler para verificar detección
+docker compose logs airflow-scheduler | tail -20
+
+# Los DAGs deberían aparecer en Airflow UI en 30-60 segundos
+```
+
+### Experiencia de Despliegue Real
+
+Durante el despliegue inicial, se encontraron los siguientes problemas y soluciones:
+
+#### Problema 1: UserData Script Falló
+
+**Síntoma**: Docker instalado pero directorio `/home/ubuntu/airflow` no existe, contenedores no corriendo.
+
+**Causa**: Error durante `apt-get upgrade` en el UserData script (error con `grub-efi-amd64-signed`). El script se detuvo antes de crear los directorios y descargar docker-compose.yaml.
+
+**Solución**: Ejecutar instalación manual paso a paso (ver sección "Instalación Manual" arriba).
+
+**Comandos de diagnóstico**:
+```bash
+# Verificar si Docker está instalado
+docker --version
+
+# Verificar si existe el directorio airflow
+ls -la /home/ubuntu/airflow
+
+# Ver logs de cloud-init para entender qué falló
+sudo cat /var/log/cloud-init-output.log | tail -50
+```
+
+#### Problema 2: IAM InstanceProfile Error
+
+**Error**: `The specified value for roleName is invalid. It must contain only alphanumeric characters`
+
+**Causa**: Se intentó usar ARN completo (`arn:aws:iam::755311132141:role/LabRole`) en lugar del nombre del rol.
+
+**Solución**: Usar solo el nombre del rol (`LabRole`) en la propiedad `Roles` del InstanceProfile.
+
+**Código corregido en plantilla**:
+```yaml
+AirflowInstanceProfile:
+  Type: "AWS::IAM::InstanceProfile"
+  Properties:
+    Roles:
+      - LabRole  # Solo el nombre, no el ARN completo
+```
+
+#### Problema 3: InstanceProfileName con formato inválido
+
+**Error**: `Value at 'instanceProfileName' failed to satisfy constraint: Member must satisfy regular expression pattern`
+
+**Causa**: Uso de `${AWS::StackName}` que no es válido en CloudFormation para InstanceProfileName.
+
+**Solución**: Eliminar la propiedad `InstanceProfileName` y dejar que CloudFormation genere el nombre automáticamente.
+
+#### Problema 4: No se puede usar SCP (falta vockey.pem)
+
+**Síntoma**: `Warning: Identity file vockey.pem not accessible: No such file or directory`
+
+**Causa**: El archivo de clave SSH no está disponible en el directorio local.
+
+**Solución**: Crear los DAGs directamente en la EC2 usando `nano` o `cat` (ver sección "Copiar DAGs Manualmente" arriba).
+
+#### Lecciones Aprendidas
+
+1. **UserData puede fallar silenciosamente**: Siempre verificar logs con `sudo cat /var/log/cloud-init-output.log` después del despliegue
+2. **Cuentas de estudiante tienen limitaciones**: Algunos paquetes pueden fallar durante `apt-get upgrade`, especialmente relacionados con grub
+3. **Instalación manual es más confiable**: Para producción, considerar usar Systems Manager o scripts de inicialización separados
+4. **Verificar contenedores después de UserData**: No asumir que todo se instaló correctamente, siempre verificar con `docker ps`
+5. **DAGs se detectan automáticamente**: No es necesario reiniciar servicios, solo esperar 30-60 segundos después de copiar archivos
+6. **IAM InstanceProfile requiere nombre de rol, no ARN**: Usar solo el nombre del rol en la propiedad `Roles`
+7. **CloudFormation no soporta todas las funciones en InstanceProfileName**: Mejor dejar que CloudFormation genere el nombre automáticamente
+
+#### Checklist Post-Despliegue
+
+Después de desplegar el stack de CloudFormation, verifica:
+
+- [ ] Instancia EC2 creada y corriendo
+- [ ] Docker instalado (`docker --version`)
+- [ ] Directorio `/home/ubuntu/airflow` existe
+- [ ] Archivo `docker-compose.yaml` descargado
+- [ ] Archivo `.env` creado con variables correctas
+- [ ] Contenedores de Airflow corriendo (`docker compose ps`)
+- [ ] Airflow UI accesible en `http://<EC2_IP>:8080`
+- [ ] DAGs copiados a `/home/ubuntu/airflow/dags/`
+- [ ] DAGs aparecen en Airflow UI (esperar 30-60 segundos)
+- [ ] DAGs se pueden activar sin errores
 
 ---
 

@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Plantilla para crear una Maquina Virtual en EC2 con Apache Airflow usando Docker"
+
+Parameters:
+  InstanceName:
+    Type: String
+    Default: "Airflow-Hackathon-UTEC"
+    Description: "Nombre de la instancia a crear"
+  AMI:
+    Type: String
+    Default: "ami-0354f5b60eeecb7d3"
+    Description: "ID de AMI"
+
+Resources:
+  EC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Ref InstanceName
+      ImageId: !Ref AMI
+      InstanceType: "t2.large"
+      KeyName: "vockey"
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: "30"
+      IamInstanceProfile: !Ref AirflowInstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Actualizar sistema
+          apt-get update -y
+          apt-get upgrade -y
+          
+          # Instalar dependencias
+          apt-get install -y \
+            apt-transport-https \
+            ca-certificates \
+            curl \
+            gnupg \
+            lsb-release \
+            git \
+            python3-pip
+          
+          # Instalar Docker
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+          apt-get update -y
+          apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+          
+          # Agregar usuario ubuntu al grupo docker
+          usermod -aG docker ubuntu
+          
+          # Crear estructura de directorios para Airflow
+          mkdir -p /home/ubuntu/airflow/dags
+          mkdir -p /home/ubuntu/airflow/logs
+          mkdir -p /home/ubuntu/airflow/plugins
+          mkdir -p /home/ubuntu/airflow/config
+          
+          # Descargar docker-compose.yaml oficial de Apache Airflow 2.10.3
+          cd /home/ubuntu/airflow
+          curl -LfO 'https://airflow.apache.org/docs/apache-airflow/2.10.3/docker-compose.yaml'
+          
+          # Generar archivo .env con AIRFLOW_UID
+          echo -e "AIRFLOW_UID=$(id -u)" > /home/ubuntu/airflow/.env
+          
+          # Configurar variables de entorno para Airflow en docker-compose.yaml
+          # Agregar variables de entorno AWS y DynamoDB
+          cat >> /home/ubuntu/airflow/.env << 'EOF'
+          AWS_DEFAULT_REGION=us-east-1
+          DYNAMODB_TABLA_REPORTES=TablaReportes-dev
+          DYNAMODB_TABLA_ESTADOS=TablaEstados-dev
+          DYNAMODB_TABLA_HISTORIAL=TablaHistorial-dev
+          SNS_TOPIC_ARN=arn:aws:sns:us-east-1:755311132141:hackathon-utec-notificaciones-dev
+          S3_BUCKET_REPORTES=hackathon-utec-reportes-dev
+          EOF
+          
+          # Inicializar Airflow (esto crea las tablas en PostgreSQL)
+          cd /home/ubuntu/airflow
+          docker compose up airflow-init
+          
+          # Iniciar servicios de Airflow en background
+          docker compose up -d
+          
+          # Configurar para que Airflow inicie automáticamente al reiniciar
+          # Crear servicio systemd para Airflow
+          cat > /etc/systemd/system/airflow.service << 'EOFSERVICE'
+          [Unit]
+          Description=Apache Airflow
+          After=docker.service
+          Requires=docker.service
+          
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          WorkingDirectory=/home/ubuntu/airflow
+          ExecStart=/usr/bin/docker compose up -d
+          ExecStop=/usr/bin/docker compose down
+          User=ubuntu
+          Group=ubuntu
+          
+          [Install]
+          WantedBy=multi-user.target
+          EOFSERVICE
+          
+          systemctl daemon-reload
+          systemctl enable airflow.service
+          
+          # Log de finalización
+          echo "Airflow setup completado" >> /var/log/airflow-setup.log
+
+  InstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Security Group para Airflow - SSH y Airflow Webserver"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: "22"
+          ToPort: "22"
+          CidrIp: "0.0.0.0/0"
+          Description: "SSH"
+        - IpProtocol: "tcp"
+          FromPort: "8080"
+          ToPort: "8080"
+          CidrIp: "0.0.0.0/0"
+          Description: "Airflow Webserver"
+
+  AirflowInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - LabRole
+
+Outputs:
+  InstanceId:
+    Description: "ID de la instancia EC2"
+    Value: !Ref EC2Instance
+  InstancePublicIP:
+    Description: "IP publica de la instancia"
+    Value: !GetAtt EC2Instance.PublicIp

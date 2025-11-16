@@ -1,0 +1,7 @@
+# Dependencias adicionales para DAGs de Airflow
+# Nota: Apache Airflow ya viene con muchas dependencias incluidas
+# Estas son adicionales necesarias para integración con AWS
+
+boto3>=1.28.0
+apache-airflow-providers-amazon>=8.0.0
+
