@@ -505,7 +505,7 @@ resources:
                 Fn::GetAtt:
                   - ActualizarEstadoFinalLambdaFunction
                   - Arn
-        RoleArn: arn:aws:iam::755311132141:role/LabRole
+        RoleArn: arn:aws:iam::414484658875:role/LabRole
       DependsOn:
         - ActualizarEstadoInicialLambdaFunction
         - EnCaminoLambdaFunction
