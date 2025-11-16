@@ -5,7 +5,7 @@ provider:
   name: aws
   runtime: nodejs20.x
   memorySize: 1024
-  timeout: 30
+  timeout: 29
   iam:
     role: arn:aws:iam::755311132141:role/LabRole
   environment:
@@ -141,13 +141,14 @@ functions:
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
 
   # Microservicio de Estado Trabajo - WebSocket Trabajador
+  # Nota: Serverless Framework solo soporta un WebSocket API por defecto
+  # Para múltiples APIs, necesitarías usar un plugin o configurarlas manualmente
+  # Por ahora, usaremos el mismo WebSocket API con diferentes rutas
   conectarTrabajador:
     handler: handlers/estadoTrabajo/conectarTrabajador.handler
     events:
       - websocket:
-          route: $connect
-          api:
-            name: estadoReporteTrabajador
+          route: trabajador/$connect
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       WEBSOCKET_TRABAJADOR_API_ID: ${self:custom.websocketTrabajadorApiId}
@@ -156,9 +157,7 @@ functions:
     handler: handlers/estadoTrabajo/desconectarTrabajador.handler
     events:
       - websocket:
-          route: $disconnect
-          api:
-            name: estadoReporteTrabajador
+          route: trabajador/$disconnect
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
 
@@ -166,9 +165,7 @@ functions:
     handler: handlers/estadoTrabajo/enCamino.handler
     events:
       - websocket:
-          route: enCamino
-          api:
-            name: estadoReporteTrabajador
+          route: trabajador/enCamino
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
@@ -178,9 +175,7 @@ functions:
     handler: handlers/estadoTrabajo/trabajadorLlego.handler
     events:
       - websocket:
-          route: trabajadorLlego
-          api:
-            name: estadoReporteTrabajador
+          route: trabajador/llego
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
@@ -190,9 +185,7 @@ functions:
     handler: handlers/estadoTrabajo/trabajoTerminado.handler
     events:
       - websocket:
-          route: trabajoTerminado
-          api:
-            name: estadoReporteTrabajador
+          route: trabajador/terminado
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
@@ -239,7 +232,7 @@ custom:
   websocketApiId:
     Ref: WebSocketApi
   websocketTrabajadorApiId:
-    Ref: WebSocketTrabajadorApi
+    Ref: WebSocketApi
 
 resources:
   Resources:
@@ -364,13 +357,6 @@ resources:
         ProtocolType: WEBSOCKET
         RouteSelectionExpression: $request.body.action
 
-    # WebSocket API para Estado Trabajo (Trabajador)
-    WebSocketTrabajadorApi:
-      Type: AWS::ApiGatewayV2::Api
-      Properties:
-        Name: estado-reporte-trabajador-${self:provider.stage}
-        ProtocolType: WEBSOCKET
-        RouteSelectionExpression: $request.body.action
 
     # Step Functions State Machine
     ProcesarReporteStateMachine:
@@ -378,95 +364,116 @@ resources:
       Properties:
         StateMachineName: ProcesarReporte-${self:provider.stage}
         DefinitionString:
-          Fn::Sub: |
-            {
-              "Comment": "Flujo de procesamiento de reporte con trabajador",
-              "StartAt": "TrabajadorAceptaReporte",
-              "States": {
-                "TrabajadorAceptaReporte": {
-                  "Type": "Task",
-                  "Resource": "arn:aws:states:::lambda:invoke",
-                  "Parameters": {
-                    "FunctionName": "${ActualizarEstadoInicialLambdaFunctionQualifiedArn}",
-                    "Payload": {
-                      "reporte_id.$": "$.reporte_id",
-                      "trabajador_id.$": "$.trabajador_id"
-                    }
+          Fn::Sub:
+            - |
+              {
+                "Comment": "Flujo de procesamiento de reporte con trabajador",
+                "StartAt": "TrabajadorAceptaReporte",
+                "States": {
+                  "TrabajadorAceptaReporte": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${ActualizarEstadoInicialArn}",
+                      "Payload": {
+                        "reporte_id.$": "$.reporte_id",
+                        "trabajador_id.$": "$.trabajador_id"
+                      }
+                    },
+                    "Next": "EsperarEnCamino",
+                    "Retry": [
+                      {
+                        "ErrorEquals": ["States.ALL"],
+                        "IntervalSeconds": 2,
+                        "MaxAttempts": 3,
+                        "BackoffRate": 2
+                      }
+                    ]
                   },
-                  "Next": "EsperarEnCamino",
-                  "Retry": [
-                    {
-                      "ErrorEquals": ["States.ALL"],
-                      "IntervalSeconds": 2,
-                      "MaxAttempts": 3,
-                      "BackoffRate": 2
-                    }
-                  ]
-                },
-                "EsperarEnCamino": {
-                  "Type": "Task",
-                  "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-                  "Parameters": {
-                    "FunctionName": "${EnCaminoLambdaFunctionQualifiedArn}",
-                    "Payload": {
-                      "reporte_id.$": "$.reporte_id",
-                      "trabajador_id.$": "$.trabajador_id",
-                      "TaskToken.$": "$$.Task.Token"
-                    }
+                  "EsperarEnCamino": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+                    "Parameters": {
+                      "FunctionName": "${EnCaminoArn}",
+                      "Payload": {
+                        "reporte_id.$": "$.reporte_id",
+                        "trabajador_id.$": "$.trabajador_id",
+                        "TaskToken.$": "$$.Task.Token"
+                      }
+                    },
+                    "Next": "EsperarLlegada",
+                    "TimeoutSeconds": 3600
                   },
-                  "Next": "EsperarLlegada",
-                  "TimeoutSeconds": 3600
-                },
-                "EsperarLlegada": {
-                  "Type": "Task",
-                  "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-                  "Parameters": {
-                    "FunctionName": "${TrabajadorLlegoLambdaFunctionQualifiedArn}",
-                    "Payload": {
-                      "reporte_id.$": "$.reporte_id",
-                      "trabajador_id.$": "$.trabajador_id",
-                      "TaskToken.$": "$$.Task.Token"
-                    }
+                  "EsperarLlegada": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+                    "Parameters": {
+                      "FunctionName": "${TrabajadorLlegoArn}",
+                      "Payload": {
+                        "reporte_id.$": "$.reporte_id",
+                        "trabajador_id.$": "$.trabajador_id",
+                        "TaskToken.$": "$$.Task.Token"
+                      }
+                    },
+                    "Next": "EsperarTerminacion",
+                    "TimeoutSeconds": 3600
                   },
-                  "Next": "EsperarTerminacion",
-                  "TimeoutSeconds": 3600
-                },
-                "EsperarTerminacion": {
-                  "Type": "Task",
-                  "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
-                  "Parameters": {
-                    "FunctionName": "${TrabajoTerminadoLambdaFunctionQualifiedArn}",
-                    "Payload": {
-                      "reporte_id.$": "$.reporte_id",
-                      "trabajador_id.$": "$.trabajador_id",
-                      "TaskToken.$": "$$.Task.Token"
-                    }
+                  "EsperarTerminacion": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+                    "Parameters": {
+                      "FunctionName": "${TrabajoTerminadoArn}",
+                      "Payload": {
+                        "reporte_id.$": "$.reporte_id",
+                        "trabajador_id.$": "$.trabajador_id",
+                        "TaskToken.$": "$$.Task.Token"
+                      }
+                    },
+                    "Next": "ActualizarEstadoFinal",
+                    "TimeoutSeconds": 3600
                   },
-                  "Next": "ActualizarEstadoFinal",
-                  "TimeoutSeconds": 3600
-                },
-                "ActualizarEstadoFinal": {
-                  "Type": "Task",
-                  "Resource": "arn:aws:states:::lambda:invoke",
-                  "Parameters": {
-                    "FunctionName": "${ActualizarEstadoFinalLambdaFunctionQualifiedArn}",
-                    "Payload": {
-                      "reporte_id.$": "$.reporte_id",
-                      "estado": "resuelto"
-                    }
-                  },
-                  "End": true,
-                  "Retry": [
-                    {
-                      "ErrorEquals": ["States.ALL"],
-                      "IntervalSeconds": 2,
-                      "MaxAttempts": 3,
-                      "BackoffRate": 2
-                    }
-                  ]
+                  "ActualizarEstadoFinal": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                      "FunctionName": "${ActualizarEstadoFinalArn}",
+                      "Payload": {
+                        "reporte_id.$": "$.reporte_id",
+                        "estado": "resuelto"
+                      }
+                    },
+                    "End": true,
+                    "Retry": [
+                      {
+                        "ErrorEquals": ["States.ALL"],
+                        "IntervalSeconds": 2,
+                        "MaxAttempts": 3,
+                        "BackoffRate": 2
+                      }
+                    ]
+                  }
                 }
               }
-            }
+            - ActualizarEstadoInicialArn:
+                Fn::GetAtt:
+                  - ActualizarEstadoInicialLambdaFunction
+                  - Arn
+              EnCaminoArn:
+                Fn::GetAtt:
+                  - EnCaminoLambdaFunction
+                  - Arn
+              TrabajadorLlegoArn:
+                Fn::GetAtt:
+                  - TrabajadorLlegoLambdaFunction
+                  - Arn
+              TrabajoTerminadoArn:
+                Fn::GetAtt:
+                  - TrabajoTerminadoLambdaFunction
+                  - Arn
+              ActualizarEstadoFinalArn:
+                Fn::GetAtt:
+                  - ActualizarEstadoFinalLambdaFunction
+                  - Arn
         RoleArn:
           Fn::GetAtt:
             - StepFunctionsExecutionRole
@@ -562,7 +569,7 @@ resources:
           - ""
           - - "wss://"
             - Fn::GetAtt:
-                - WebSocketTrabajadorApi
+                - WebSocketApi
                 - ApiId
             - ".execute-api."
             - ${self:provider.region}
