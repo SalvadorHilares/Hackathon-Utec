@@ -1,8 +1,6 @@
 const { putItem, getTimestamp } = require('../../shared/dynamodb');
-const { startExecution } = require('../../shared/stepfunctions');
 
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
-const STEP_FUNCTIONS_ARN = process.env.STEP_FUNCTIONS_ARN;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
 
 async function handler(event) {
@@ -32,16 +30,13 @@ async function handler(event) {
     
     await putItem(TABLA_ESTADOS, estado);
     
-    // Iniciar Step Functions workflow
-    await startExecution(STEP_FUNCTIONS_ARN, {
-      reporte_id,
-      trabajador_id
-    });
+    // Nota: Esta función es llamada POR Step Functions, no inicia Step Functions
+    // El inicio de Step Functions se hace desde crearReporte o asignarReporte
     
     return {
       statusCode: 200,
       body: JSON.stringify({
-        mensaje: 'Estado actualizado e iniciado Step Functions',
+        mensaje: 'Estado actualizado',
         estado
       })
     };

@@ -7,7 +7,7 @@ const TABLA_REPORTES = process.env.TABLA_REPORTES;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
 const TABLA_ESTADO_TRABAJO = process.env.TABLA_ESTADO_TRABAJO;
 const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN;
-const STEP_FUNCTIONS_ARN = process.env.STEP_FUNCTIONS_ARN;
+const STEP_FUNCTIONS_NAME = process.env.STEP_FUNCTIONS_NAME;
 
 async function handler(event) {
   try {
@@ -103,7 +103,7 @@ async function handler(event) {
     
     // Iniciar Step Functions workflow
     try {
-      await startExecution(STEP_FUNCTIONS_ARN, {
+      await startExecution(STEP_FUNCTIONS_NAME, {
         reporte_id,
         trabajador_id
       });

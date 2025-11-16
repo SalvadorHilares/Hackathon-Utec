@@ -5,7 +5,7 @@ const { startExecution } = require('../../shared/stepfunctions');
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
-const STEP_FUNCTIONS_ARN = process.env.STEP_FUNCTIONS_ARN;
+const STEP_FUNCTIONS_NAME = process.env.STEP_FUNCTIONS_NAME;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
 
 async function handler(event) {
@@ -102,7 +102,7 @@ async function handler(event) {
     
     // Iniciar Step Functions workflow (si hay trabajador asignado)
     if (body.trabajador_asignado) {
-      await startExecution(STEP_FUNCTIONS_ARN, {
+      await startExecution(STEP_FUNCTIONS_NAME, {
         reporte_id,
         trabajador_id: body.trabajador_asignado
       });

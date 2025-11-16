@@ -1,12 +1,41 @@
 const { SFNClient, StartExecutionCommand } = require('@aws-sdk/client-sfn');
+const { STSClient, GetCallerIdentityCommand } = require('@aws-sdk/client-sts');
 
 const client = new SFNClient({ region: process.env.REGION || 'us-east-1' });
+const stsClient = new STSClient({ region: process.env.REGION || 'us-east-1' });
+
+/**
+ * Construir ARN de Step Functions desde el nombre
+ */
+async function getStateMachineArn(stateMachineName) {
+  try {
+    // Si ya es un ARN, retornarlo
+    if (stateMachineName.startsWith('arn:aws:states:')) {
+      return stateMachineName;
+    }
+    
+    // Obtener account ID
+    const identityCommand = new GetCallerIdentityCommand({});
+    const identity = await stsClient.send(identityCommand);
+    const accountId = identity.Account;
+    const region = process.env.REGION || 'us-east-1';
+    
+    // Construir ARN
+    return `arn:aws:states:${region}:${accountId}:stateMachine:${stateMachineName}`;
+  } catch (error) {
+    console.error('Error getting state machine ARN:', error);
+    throw error;
+  }
+}
 
 /**
  * Iniciar ejecución de Step Functions
  */
-async function startExecution(stateMachineArn, input) {
+async function startExecution(stateMachineArnOrName, input) {
   try {
+    // Construir ARN si es necesario
+    const stateMachineArn = await getStateMachineArn(stateMachineArnOrName);
+    
     const command = new StartExecutionCommand({
       stateMachineArn: stateMachineArn,
       input: JSON.stringify(input)

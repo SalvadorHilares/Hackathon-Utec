@@ -29,7 +29,7 @@ functions:
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
-      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
+      STEP_FUNCTIONS_NAME: ProcesarReporte-${self:provider.stage}
 
   actualizarReporte:
     handler: handlers/reportes/actualizarReporte.handler
@@ -55,6 +55,7 @@ functions:
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
+      STEP_FUNCTIONS_NAME: ProcesarReporte-${self:provider.stage}
 
   visualizarReporte:
     handler: handlers/reportes/visualizarReporte.handler
@@ -169,7 +170,6 @@ functions:
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
-      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
 
   trabajadorLlego:
     handler: handlers/estadoTrabajo/trabajadorLlego.handler
@@ -179,7 +179,6 @@ functions:
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
-      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
 
   trabajoTerminado:
     handler: handlers/estadoTrabajo/trabajoTerminado.handler
@@ -191,14 +190,13 @@ functions:
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       S3_BUCKET: ${self:custom.s3Bucket}
-      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
 
   # Lambdas de Soporte
   actualizarEstadoInicial:
     handler: handlers/soporte/actualizarEstadoInicial.handler
     environment:
       TABLA_ESTADOS: ${self:custom.tablas.estados}
-      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
+      STEP_FUNCTIONS_NAME: ProcesarReporte-${self:provider.stage}
 
   actualizarEstadoFinal:
     handler: handlers/soporte/actualizarEstadoFinal.handler
