@@ -1,0 +1,571 @@
+org: shilaresbarrios
+service: hackathon-utec-incidentes
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  memorySize: 1024
+  timeout: 30
+  iam:
+    role: arn:aws:iam::ACCOUNT_ID:role/LabRole
+  environment:
+    TENANT_ID: utec
+    STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+  region: us-east-1
+  stage: dev
+
+functions:
+  # Microservicio de Reportes - REST API
+  crearReporte:
+    handler: handlers/reportes/crearReporte.handler
+    events:
+      - http:
+          path: reportes
+          method: post
+          cors: true
+    environment:
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
+      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
+
+  actualizarReporte:
+    handler: handlers/reportes/actualizarReporte.handler
+    events:
+      - http:
+          path: reportes/{reporte_id}
+          method: put
+          cors: true
+    environment:
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+
+  asignarReporte:
+    handler: handlers/reportes/asignarReporte.handler
+    events:
+      - http:
+          path: reportes/{reporte_id}/asignar
+          method: post
+          cors: true
+    environment:
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
+
+  visualizarReporte:
+    handler: handlers/reportes/visualizarReporte.handler
+    events:
+      - http:
+          path: reportes/{reporte_id}
+          method: get
+          cors: true
+    environment:
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+
+  cerrarReporte:
+    handler: handlers/reportes/cerrarReporte.handler
+    events:
+      - http:
+          path: reportes/{reporte_id}/cerrar
+          method: post
+          cors: true
+    environment:
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+
+  obtenerHistorial:
+    handler: handlers/reportes/obtenerHistorial.handler
+    events:
+      - http:
+          path: reportes/{reporte_id}/historial
+          method: get
+          cors: true
+    environment:
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+
+  listarReportes:
+    handler: handlers/reportes/listarReportes.handler
+    events:
+      - http:
+          path: reportes
+          method: get
+          cors: true
+    environment:
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+
+  # Microservicio de Estado - WebSocket Cliente
+  conectarCliente:
+    handler: handlers/estado/conectarCliente.handler
+    events:
+      - websocket:
+          route: $connect
+    environment:
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      WEBSOCKET_API_ID: ${self:custom.websocketApiId}
+
+  desconectarCliente:
+    handler: handlers/estado/desconectarCliente.handler
+    events:
+      - websocket:
+          route: $disconnect
+    environment:
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+
+  obtenerEstados:
+    handler: handlers/estado/obtenerEstados.handler
+    events:
+      - websocket:
+          route: $default
+    environment:
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      WEBSOCKET_API_ID: ${self:custom.websocketApiId}
+
+  notificarCambioEstado:
+    handler: handlers/estado/notificarCambioEstado.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt:
+              - TablaEstados
+              - StreamArn
+          batchSize: 10
+          startingPosition: LATEST
+    environment:
+      WEBSOCKET_API_ID: ${self:custom.websocketApiId}
+
+  # Microservicio de Estado Trabajo - WebSocket Trabajador
+  conectarTrabajador:
+    handler: handlers/estadoTrabajo/conectarTrabajador.handler
+    events:
+      - websocket:
+          route: $connect
+          api:
+            name: estadoReporteTrabajador
+    environment:
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      WEBSOCKET_TRABAJADOR_API_ID: ${self:custom.websocketTrabajadorApiId}
+
+  desconectarTrabajador:
+    handler: handlers/estadoTrabajo/desconectarTrabajador.handler
+    events:
+      - websocket:
+          route: $disconnect
+          api:
+            name: estadoReporteTrabajador
+    environment:
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+
+  enCamino:
+    handler: handlers/estadoTrabajo/enCamino.handler
+    events:
+      - websocket:
+          route: enCamino
+          api:
+            name: estadoReporteTrabajador
+    environment:
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
+
+  trabajadorLlego:
+    handler: handlers/estadoTrabajo/trabajadorLlego.handler
+    events:
+      - websocket:
+          route: trabajadorLlego
+          api:
+            name: estadoReporteTrabajador
+    environment:
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
+
+  trabajoTerminado:
+    handler: handlers/estadoTrabajo/trabajoTerminado.handler
+    events:
+      - websocket:
+          route: trabajoTerminado
+          api:
+            name: estadoReporteTrabajador
+    environment:
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      S3_BUCKET: ${self:custom.s3Bucket}
+      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
+
+  # Lambdas de Soporte
+  actualizarEstadoInicial:
+    handler: handlers/soporte/actualizarEstadoInicial.handler
+    environment:
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      STEP_FUNCTIONS_ARN: ${self:custom.stepFunctionsArn}
+
+  actualizarEstadoFinal:
+    handler: handlers/soporte/actualizarEstadoFinal.handler
+    environment:
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+
+  guardarInformacionS3:
+    handler: handlers/soporte/guardarInformacionS3.handler
+    environment:
+      S3_BUCKET: ${self:custom.s3Bucket}
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+
+  procesarNotificacionSNS:
+    handler: handlers/soporte/procesarNotificacionSNS.handler
+    environment:
+      SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+
+custom:
+  tablas:
+    reportes: TablaReportes-${self:provider.stage}
+    estados: TablaEstados-${self:provider.stage}
+    historial: TablaHistorial-${self:provider.stage}
+    estadoTrabajo: TablaEstadoTrabajo-${self:provider.stage}
+  s3Bucket: hackathon-utec-reportes-${self:provider.stage}
+  snsTopicArn:
+    Ref: SNSTopicNotificaciones
+  stepFunctionsArn:
+    Ref: ProcesarReporteStateMachine
+  websocketApiId:
+    Ref: WebSocketApi
+  websocketTrabajadorApiId:
+    Ref: WebSocketTrabajadorApi
+
+resources:
+  Resources:
+    # Tabla Reportes
+    TablaReportes:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablas.reportes}
+        AttributeDefinitions:
+          - AttributeName: reporte_id
+            AttributeType: S
+          - AttributeName: fecha_creacion
+            AttributeType: S
+          - AttributeName: usuario_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: reporte_id
+            KeyType: HASH
+          - AttributeName: fecha_creacion
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: usuario_id-index
+            KeySchema:
+              - AttributeName: usuario_id
+                KeyType: HASH
+              - AttributeName: fecha_creacion
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+
+    # Tabla Estados
+    TablaEstados:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablas.estados}
+        AttributeDefinitions:
+          - AttributeName: reporte_id
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: S
+        KeySchema:
+          - AttributeName: reporte_id
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+
+    # Tabla Historial
+    TablaHistorial:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablas.historial}
+        AttributeDefinitions:
+          - AttributeName: reporte_id
+            AttributeType: S
+          - AttributeName: timestamp_accion
+            AttributeType: S
+        KeySchema:
+          - AttributeName: reporte_id
+            KeyType: HASH
+          - AttributeName: timestamp_accion
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+    # Tabla Estado Trabajo
+    TablaEstadoTrabajo:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablas.estadoTrabajo}
+        AttributeDefinitions:
+          - AttributeName: reporte_id
+            AttributeType: S
+          - AttributeName: trabajador_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: reporte_id
+            KeyType: HASH
+          - AttributeName: trabajador_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+    # S3 Bucket
+    S3BucketReportes:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.s3Bucket}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - HEAD
+              AllowedHeaders:
+                - "*"
+              MaxAge: 3000
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+
+    # SNS Topic
+    SNSTopicNotificaciones:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: hackathon-utec-notificaciones-${self:provider.stage}
+        DisplayName: Notificaciones Hackathon UTEC
+
+    # WebSocket API para Estado (Cliente)
+    WebSocketApi:
+      Type: AWS::ApiGatewayV2::Api
+      Properties:
+        Name: estado-websocket-${self:provider.stage}
+        ProtocolType: WEBSOCKET
+        RouteSelectionExpression: $request.body.action
+
+    # WebSocket API para Estado Trabajo (Trabajador)
+    WebSocketTrabajadorApi:
+      Type: AWS::ApiGatewayV2::Api
+      Properties:
+        Name: estado-reporte-trabajador-${self:provider.stage}
+        ProtocolType: WEBSOCKET
+        RouteSelectionExpression: $request.body.action
+
+    # Step Functions State Machine
+    ProcesarReporteStateMachine:
+      Type: AWS::StepFunctions::StateMachine
+      Properties:
+        StateMachineName: ProcesarReporte-${self:provider.stage}
+        DefinitionString:
+          Fn::Sub: |
+            {
+              "Comment": "Flujo de procesamiento de reporte con trabajador",
+              "StartAt": "TrabajadorAceptaReporte",
+              "States": {
+                "TrabajadorAceptaReporte": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::lambda:invoke",
+                  "Parameters": {
+                    "FunctionName": "${ActualizarEstadoInicialLambdaFunctionQualifiedArn}",
+                    "Payload": {
+                      "reporte_id.$": "$.reporte_id",
+                      "trabajador_id.$": "$.trabajador_id"
+                    }
+                  },
+                  "Next": "EsperarEnCamino",
+                  "Retry": [
+                    {
+                      "ErrorEquals": ["States.ALL"],
+                      "IntervalSeconds": 2,
+                      "MaxAttempts": 3,
+                      "BackoffRate": 2
+                    }
+                  ]
+                },
+                "EsperarEnCamino": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+                  "Parameters": {
+                    "FunctionName": "${EnCaminoLambdaFunctionQualifiedArn}",
+                    "Payload": {
+                      "reporte_id.$": "$.reporte_id",
+                      "trabajador_id.$": "$.trabajador_id",
+                      "TaskToken.$": "$$.Task.Token"
+                    }
+                  },
+                  "Next": "EsperarLlegada",
+                  "TimeoutSeconds": 3600
+                },
+                "EsperarLlegada": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+                  "Parameters": {
+                    "FunctionName": "${TrabajadorLlegoLambdaFunctionQualifiedArn}",
+                    "Payload": {
+                      "reporte_id.$": "$.reporte_id",
+                      "trabajador_id.$": "$.trabajador_id",
+                      "TaskToken.$": "$$.Task.Token"
+                    }
+                  },
+                  "Next": "EsperarTerminacion",
+                  "TimeoutSeconds": 3600
+                },
+                "EsperarTerminacion": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+                  "Parameters": {
+                    "FunctionName": "${TrabajoTerminadoLambdaFunctionQualifiedArn}",
+                    "Payload": {
+                      "reporte_id.$": "$.reporte_id",
+                      "trabajador_id.$": "$.trabajador_id",
+                      "TaskToken.$": "$$.Task.Token"
+                    }
+                  },
+                  "Next": "ActualizarEstadoFinal",
+                  "TimeoutSeconds": 3600
+                },
+                "ActualizarEstadoFinal": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::lambda:invoke",
+                  "Parameters": {
+                    "FunctionName": "${ActualizarEstadoFinalLambdaFunctionQualifiedArn}",
+                    "Payload": {
+                      "reporte_id.$": "$.reporte_id",
+                      "estado": "resuelto"
+                    }
+                  },
+                  "End": true,
+                  "Retry": [
+                    {
+                      "ErrorEquals": ["States.ALL"],
+                      "IntervalSeconds": 2,
+                      "MaxAttempts": 3,
+                      "BackoffRate": 2
+                    }
+                  ]
+                }
+              }
+            }
+        RoleArn:
+          Fn::GetAtt:
+            - StepFunctionsExecutionRole
+            - Arn
+      DependsOn:
+        - ActualizarEstadoInicialLambdaFunction
+        - EnCaminoLambdaFunction
+        - TrabajadorLlegoLambdaFunction
+        - TrabajoTerminadoLambdaFunction
+        - ActualizarEstadoFinalLambdaFunction
+
+    # IAM Role para Step Functions
+    StepFunctionsExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: StepFunctionsExecutionRole-${self:provider.stage}
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: states.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: StepFunctionsExecutionPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                  Resource:
+                    - Fn::GetAtt:
+                        - ActualizarEstadoInicialLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - EnCaminoLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - TrabajadorLlegoLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - TrabajoTerminadoLambdaFunction
+                        - Arn
+                    - Fn::GetAtt:
+                        - ActualizarEstadoFinalLambdaFunction
+                        - Arn
+
+  Outputs:
+    TablaReportesArn:
+      Value:
+        Fn::GetAtt:
+          - TablaReportes
+          - Arn
+    TablaEstadosArn:
+      Value:
+        Fn::GetAtt:
+          - TablaEstados
+          - Arn
+    TablaHistorialArn:
+      Value:
+        Fn::GetAtt:
+          - TablaHistorial
+          - Arn
+    TablaEstadoTrabajoArn:
+      Value:
+        Fn::GetAtt:
+          - TablaEstadoTrabajo
+          - Arn
+    S3BucketName:
+      Value: ${self:custom.s3Bucket}
+    SNSTopicArn:
+      Value:
+        Ref: SNSTopicNotificaciones
+    StepFunctionsArn:
+      Value:
+        Ref: ProcesarReporteStateMachine
+    WebSocketApiEndpoint:
+      Value:
+        Fn::Join:
+          - ""
+          - - "wss://"
+            - Fn::GetAtt:
+                - WebSocketApi
+                - ApiId
+            - ".execute-api."
+            - ${self:provider.region}
+            - ".amazonaws.com/"
+            - ${self:provider.stage}
+    WebSocketTrabajadorApiEndpoint:
+      Value:
+        Fn::Join:
+          - ""
+          - - "wss://"
+            - Fn::GetAtt:
+                - WebSocketTrabajadorApi
+                - ApiId
+            - ".execute-api."
+            - ${self:provider.region}
+            - ".amazonaws.com/"
+            - ${self:provider.stage}
+
