@@ -16,6 +16,28 @@ provider:
   stage: dev
 
 functions:
+  # Registro y Autenticación de Usuarios
+  registrarUsuario:
+    handler: handlers/auth/registrarUsuario.handler
+    events:
+      - http:
+          path: auth/register
+          method: post
+          cors: true
+    environment:
+      TABLA_USUARIOS: ${self:custom.tablas.usuarios}
+
+  loginUsuario:
+    handler: handlers/auth/loginUsuario.handler
+    events:
+      - http:
+          path: auth/login
+          method: post
+          cors: true
+    environment:
+      TABLA_USUARIOS: ${self:custom.tablas.usuarios}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
+
   # Microservicio de Reportes - REST API
   crearReporte:
     handler: handlers/reportes/crearReporte.handler
@@ -225,6 +247,7 @@ functions:
 
 custom:
   tablas:
+    usuarios: TablaUsuarios-${self:provider.stage}
     reportes: TablaReportes-${self:provider.stage}
     estados: TablaEstados-${self:provider.stage}
     historial: TablaHistorial-${self:provider.stage}
@@ -242,6 +265,28 @@ custom:
 
 resources:
   Resources:
+    # Tabla Usuarios
+    TablaUsuarios:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablas.usuarios}
+        AttributeDefinitions:
+          - AttributeName: usuario_id
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: usuario_id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
     # Tabla Reportes
     TablaReportes:
       Type: AWS::DynamoDB::Table
