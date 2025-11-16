@@ -3,7 +3,6 @@ const { sendTaskSuccess } = require('../../shared/stepfunctions');
 
 const TABLA_ESTADO_TRABAJO = process.env.TABLA_ESTADO_TRABAJO;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
-const STEP_FUNCTIONS_ARN = process.env.STEP_FUNCTIONS_ARN;
 
 async function handler(event) {
   try {

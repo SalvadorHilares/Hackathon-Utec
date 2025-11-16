@@ -68,6 +68,19 @@ functions:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
 
+  obtenerReporteCompleto:
+    handler: handlers/reportes/obtenerReporteCompleto.handler
+    events:
+      - http:
+          path: reportes/{reporte_id}/completo
+          method: get
+          cors: true
+    environment:
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      TABLA_HISTORIAL: ${self:custom.tablas.historial}
+
   cerrarReporte:
     handler: handlers/reportes/cerrarReporte.handler
     events:
@@ -107,7 +120,7 @@ functions:
       - websocket:
           route: $connect
     environment:
-      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TABLA_CONEXIONES: ${self:custom.tablas.conexiones}
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
 
   desconectarCliente:
@@ -116,7 +129,7 @@ functions:
       - websocket:
           route: $disconnect
     environment:
-      TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TABLA_CONEXIONES: ${self:custom.tablas.conexiones}
 
   obtenerEstados:
     handler: handlers/estado/obtenerEstados.handler
@@ -125,6 +138,8 @@ functions:
           route: $default
     environment:
       TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
 
   notificarCambioEstado:
@@ -139,7 +154,10 @@ functions:
           batchSize: 10
           startingPosition: LATEST
     environment:
+      TABLA_CONEXIONES: ${self:custom.tablas.conexiones}
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
+      REGION: ${self:provider.region}
+      STAGE: ${self:provider.stage}
 
   # Microservicio de Estado Trabajo - WebSocket Trabajador
   # Nota: $connect y $disconnect no pueden tener prefijos, así que usamos las mismas rutas
@@ -206,6 +224,7 @@ custom:
     estados: TablaEstados-${self:provider.stage}
     historial: TablaHistorial-${self:provider.stage}
     estadoTrabajo: TablaEstadoTrabajo-${self:provider.stage}
+    conexiones: TablaConexiones-${self:provider.stage}
   s3Bucket: hackathon-utec-reportes-${self:provider.stage}
   snsTopicArn:
     Ref: SNSTopicNotificaciones
@@ -300,6 +319,31 @@ resources:
           - AttributeName: trabajador_id
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
+
+    # Tabla Conexiones WebSocket
+    TablaConexiones:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablas.conexiones}
+        AttributeDefinitions:
+          - AttributeName: connection_id
+            AttributeType: S
+          - AttributeName: reporte_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connection_id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: reporte_id-index
+            KeySchema:
+              - AttributeName: reporte_id
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
 
     # S3 Bucket
     S3BucketReportes:
@@ -484,6 +528,11 @@ resources:
       Value:
         Fn::GetAtt:
           - TablaEstadoTrabajo
+          - Arn
+    TablaConexionesArn:
+      Value:
+        Fn::GetAtt:
+          - TablaConexiones
           - Arn
     S3BucketName:
       Value: ${self:custom.s3Bucket}
