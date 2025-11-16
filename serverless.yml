@@ -142,31 +142,15 @@ functions:
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
 
   # Microservicio de Estado Trabajo - WebSocket Trabajador
-  # Nota: Serverless Framework solo soporta un WebSocket API por defecto
-  # Para múltiples APIs, necesitarías usar un plugin o configurarlas manualmente
-  # Por ahora, usaremos el mismo WebSocket API con diferentes rutas
-  conectarTrabajador:
-    handler: handlers/estadoTrabajo/conectarTrabajador.handler
-    events:
-      - websocket:
-          route: trabajador/$connect
-    environment:
-      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
-      WEBSOCKET_TRABAJADOR_API_ID: ${self:custom.websocketTrabajadorApiId}
-
-  desconectarTrabajador:
-    handler: handlers/estadoTrabajo/desconectarTrabajador.handler
-    events:
-      - websocket:
-          route: trabajador/$disconnect
-    environment:
-      TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+  # Nota: $connect y $disconnect no pueden tener prefijos, así que usamos las mismas rutas
+  # y diferenciamos en el handler según el tipo de usuario
+  # O simplemente no usamos connect/disconnect específicos para trabajador
 
   enCamino:
     handler: handlers/estadoTrabajo/enCamino.handler
     events:
       - websocket:
-          route: trabajador/enCamino
+          route: enCamino
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
@@ -175,7 +159,7 @@ functions:
     handler: handlers/estadoTrabajo/trabajadorLlego.handler
     events:
       - websocket:
-          route: trabajador/llego
+          route: trabajadorLlego
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
@@ -184,7 +168,7 @@ functions:
     handler: handlers/estadoTrabajo/trabajoTerminado.handler
     events:
       - websocket:
-          route: trabajador/terminado
+          route: trabajoTerminado
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
