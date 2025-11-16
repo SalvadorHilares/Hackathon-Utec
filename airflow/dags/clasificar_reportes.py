@@ -63,16 +63,20 @@ def clasificar_y_notificar(**context):
             tipo = reporte.get('tipo', 'otro')
             nivel_urgencia = reporte.get('nivel_urgencia', 'media')
             reporte_id = reporte.get('reporte_id')
+            fecha_creacion = reporte.get('fecha_creacion')
             
-            if not reporte_id:
+            if not reporte_id or not fecha_creacion:
                 continue
             
             # Determinar área responsable
             area_responsable = AREAS_RESPONSABLES.get(tipo, AREAS_RESPONSABLES['otro'])
             
-            # Marcar como clasificado
+            # Marcar como clasificado (usar ambas claves: reporte_id + fecha_creacion)
             tabla.update_item(
-                Key={'reporte_id': reporte_id},
+                Key={
+                    'reporte_id': reporte_id,
+                    'fecha_creacion': fecha_creacion
+                },
                 UpdateExpression='SET clasificado_automaticamente = :true, area_responsable = :area',
                 ExpressionAttributeValues={
                     ':true': True,

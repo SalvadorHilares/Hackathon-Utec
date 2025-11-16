@@ -1498,6 +1498,218 @@ http://<EC2_PUBLIC_IP>:8080
 
 **Tags:** `reportes`, `estadisticas`, `semanal`, `s3`
 
+### Cómo Probar los DAGs - Guía Completa
+
+Esta sección documenta cómo probar los DAGs de Airflow con datos reales y replicar el proceso en otros entornos.
+
+#### ⚠️ Nota Importante sobre Scripts
+
+Los scripts en el directorio `scripts/` son de **autoayuda** y pueden no funcionar en todos los entornos debido a:
+- Diferencias en sistemas operativos (Windows vs Linux)
+- Permisos de archivos
+- Configuración de AWS CLI
+- Disponibilidad de herramientas (`jq`, `wscat`, etc.)
+
+**Si los scripts no funcionan, sigue las instrucciones manuales** proporcionadas en esta guía.
+
+---
+
+#### Paso 1: Crear Reportes de Prueba con Fecha de Ayer
+
+Para probar los DAGs inmediatamente, necesitas crear reportes con fecha del día anterior, ya que los DAGs procesan datos históricos.
+
+**1.1. Crear reportes usando la API REST:**
+
+```bash
+# Reporte 1: Seguridad - Alta
+curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "usuario_id": "test-user-001",
+    "tipo": "seguridad",
+    "ubicacion": "Edificio A, Entrada Principal",
+    "descripcion": "Puerta de seguridad rota",
+    "nivel_urgencia": "alta",
+    "rol": "estudiante"
+  }'
+
+# Reporte 2: Mantenimiento - Media
+curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "usuario_id": "test-user-002",
+    "tipo": "mantenimiento",
+    "ubicacion": "Edificio B, Aula 201",
+    "descripcion": "Aire acondicionado no funciona",
+    "nivel_urgencia": "media",
+    "rol": "estudiante"
+  }'
+
+# Reporte 3: Limpieza - Baja
+curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "usuario_id": "test-user-003",
+    "tipo": "limpieza",
+    "ubicacion": "Edificio C, Pasillo 3er piso",
+    "descripcion": "Basura acumulada",
+    "nivel_urgencia": "baja",
+    "rol": "estudiante"
+  }'
+
+# Reporte 4: Seguridad - Crítica
+curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "usuario_id": "test-user-004",
+    "tipo": "seguridad",
+    "ubicacion": "Edificio A, Estacionamiento",
+    "descripcion": "Cámara de seguridad vandalizada",
+    "nivel_urgencia": "critica",
+    "rol": "estudiante"
+  }'
+
+# Reporte 5: Mantenimiento - Alta
+curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "usuario_id": "test-user-005",
+    "tipo": "mantenimiento",
+    "ubicacion": "Edificio B, Baño 2do piso",
+    "descripcion": "Fuga de agua en tubería",
+    "nivel_urgencia": "alta",
+    "rol": "estudiante"
+  }'
+```
+
+**Guarda los `reporte_id` de cada respuesta.**
+
+**1.2. Obtener fecha de ayer:**
+
+```bash
+# En Linux/Mac
+FECHA_AYER=$(date -d "yesterday" +%Y-%m-%dT%H:%M:%S.000Z)
+echo $FECHA_AYER
+
+# En Windows PowerShell
+$FECHA_AYER = (Get-Date).AddDays(-1).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+```
+
+**1.3. Actualizar fecha_creacion en DynamoDB:**
+
+**⚠️ IMPORTANTE:** La tabla `TablaReportes-dev` tiene una **clave compuesta** (`reporte_id` + `fecha_creacion`), por lo que necesitas **eliminar y recrear** cada reporte con la nueva fecha.
+
+```bash
+# Para cada reporte, primero obtén la fecha_creacion actual
+aws dynamodb get-item \
+  --table-name TablaReportes-dev \
+  --region us-east-1 \
+  --key '{"reporte_id": {"S": "TU_REPORTE_ID"}, "fecha_creacion": {"S": "FECHA_ACTUAL"}}'
+
+# Luego elimina el item viejo
+aws dynamodb delete-item \
+  --table-name TablaReportes-dev \
+  --region us-east-1 \
+  --key '{"reporte_id": {"S": "TU_REPORTE_ID"}, "fecha_creacion": {"S": "FECHA_ACTUAL"}}'
+
+# Finalmente, crea el item con la nueva fecha
+aws dynamodb put-item \
+  --table-name TablaReportes-dev \
+  --region us-east-1 \
+  --item '{
+    "reporte_id": {"S": "TU_REPORTE_ID"},
+    "fecha_creacion": {"S": "FECHA_AYER"},
+    "usuario_id": {"S": "test-user-001"},
+    "tipo": {"S": "seguridad"},
+    "ubicacion": {"S": "Edificio A, Entrada Principal"},
+    "descripcion": {"S": "Puerta de seguridad rota"},
+    "nivel_urgencia": {"S": "alta"},
+    "estado": {"S": "pendiente"},
+    "trabajador_asignado": {"S": ""},
+    "fecha_actualizacion": {"S": "FECHA_AYER"},
+    "imagenes": {"L": []},
+    "videos": {"L": []}
+  }'
+```
+
+**Repite este proceso para cada reporte creado.**
+
+---
+
+#### Paso 2: Ejecutar DAGs en Airflow UI
+
+1. **Abre Airflow UI**: `http://<EC2_IP>:8080`
+2. **Ejecuta `clasificar_reportes_automatico`**:
+   - Activa el DAG si no está activo (toggle a la izquierda)
+   - Haz clic en el botón "Play" (▶️) en la parte superior
+   - Espera 30-60 segundos
+   - Revisa los logs: deberías ver "Procesados X reportes de X sin clasificar"
+3. **Ejecuta `reportes_estadisticos_diarios`**:
+   - Activa el DAG si no está activo
+   - Haz clic en el botón "Play" (▶️)
+   - Espera 1-2 minutos
+   - Revisa los logs: deberías ver "Reporte diario generado para YYYY-MM-DD: {...}"
+
+---
+
+#### Paso 3: Verificar Resultados
+
+**3.1. Verificar que los reportes están clasificados:**
+
+```bash
+aws dynamodb scan \
+  --table-name TablaReportes-dev \
+  --region us-east-1 \
+  --filter-expression "begins_with(fecha_creacion, :fecha) AND attribute_exists(clasificado_automaticamente)" \
+  --expression-attribute-values '{":fecha": {"S": "2025-11-15"}}' \
+  --max-items 10
+```
+
+Deberías ver los reportes con:
+- `clasificado_automaticamente: true`
+- `area_responsable: area-<tipo>@utec.edu.pe`
+
+**3.2. Verificar reporte diario en S3:**
+
+```bash
+# Listar reportes diarios
+aws s3 ls s3://hackathon-utec-reportes-dev/reportes-estadisticos/diarios/
+
+# Ver contenido del reporte de ayer
+FECHA_AYER_SIMPLE=$(date -d "yesterday" +%Y-%m-%d)  # Linux/Mac
+aws s3 cp s3://hackathon-utec-reportes-dev/reportes-estadisticos/diarios/$FECHA_AYER_SIMPLE.json - | cat
+```
+
+**3.3. Ejemplo de reporte generado exitosamente:**
+
+```json
+{
+  "fecha": "2025-11-15",
+  "total_reportes": 5,
+  "por_tipo": {
+    "mantenimiento": 2,
+    "limpieza": 1,
+    "seguridad": 2
+  },
+  "por_urgencia": {
+    "alta": 2,
+    "baja": 1,
+    "critica": 1,
+    "media": 1
+  },
+  "por_estado": {
+    "pendiente": 5
+  },
+  "reportes_criticos": 1,
+  "promedio_tiempo_resolucion": null,
+  "timestamp_generacion": "2025-11-16T21:49:28.977724"
+}
+```
+
+Este es un ejemplo real de un reporte diario generado exitosamente por el DAG `reportes_estadisticos_diarios`.
+
+---
+
 ### Variables de Entorno
 
 Las siguientes variables de entorno están configuradas en el `.env` de Airflow:
@@ -1531,6 +1743,24 @@ Se han creado scripts para facilitar el manejo de Airflow:
 
 - **`scripts/copiar-dags-airflow.sh`**: Copia automáticamente los DAGs a la instancia EC2
 - **`scripts/verificar-airflow.sh`**: Verifica el estado de Airflow y contenedores
+
+**⚠️ Nota sobre Scripts:**
+
+Los scripts en el directorio `scripts/` son de **autoayuda** y están diseñados para facilitar tareas comunes. Sin embargo, pueden no funcionar en todos los entornos debido a:
+
+- Diferencias en sistemas operativos (Windows vs Linux vs macOS)
+- Permisos de archivos y ejecución
+- Configuración de AWS CLI
+- Disponibilidad de herramientas externas (`jq`, `wscat`, etc.)
+- Versiones de shell (bash vs zsh vs PowerShell)
+
+**Si un script no funciona:**
+1. Revisa los errores en la salida del script
+2. Consulta la sección "Troubleshooting" de este README
+3. Sigue las **instrucciones manuales** proporcionadas en las secciones correspondientes
+4. Los comandos individuales siempre están documentados para ejecución manual
+
+**Recomendación**: Para producción o entornos críticos, usa los comandos manuales documentados en lugar de depender de los scripts.
 
 ### Comandos Útiles
 
@@ -1596,7 +1826,46 @@ ls -la /home/ubuntu/airflow/dags/
    - Verificar que boto3 esté instalado en los contenedores
    - Verificar que las credenciales AWS estén disponibles (IAM Role)
 
-6. **Contenedores no inician**
+6. **Error: "The provided key element does not match the schema" en DAG de clasificación**
+   - **Síntoma**: El DAG `clasificar_reportes_automatico` falla con error de validación al intentar actualizar reportes
+   - **Causa**: La tabla `TablaReportes-dev` tiene una **clave compuesta** (`reporte_id` + `fecha_creacion`), pero el DAG intentaba actualizar usando solo `reporte_id`
+   - **Solución**: El DAG debe usar ambas claves al hacer `update_item`. Verifica que el código del DAG incluya:
+     ```python
+     tabla.update_item(
+         Key={
+             'reporte_id': reporte_id,
+             'fecha_creacion': fecha_creacion  # ← Debe incluir ambas claves
+         },
+         UpdateExpression='SET clasificado_automaticamente = :true, area_responsable = :area',
+         ...
+     )
+     ```
+   - **Verificación**: Revisa el archivo `airflow/dags/clasificar_reportes.py` línea 74-85 para confirmar que usa ambas claves
+
+7. **Error al actualizar fecha_creacion en DynamoDB**
+   - **Síntoma**: Error "The provided key element does not match the schema" al intentar actualizar `fecha_creacion`
+   - **Causa**: `fecha_creacion` es parte de la clave compuesta, no se puede actualizar directamente
+   - **Solución**: Debes **eliminar y recrear** el item con la nueva fecha:
+     ```bash
+     # 1. Eliminar item viejo (con ambas claves)
+     aws dynamodb delete-item \
+       --table-name TablaReportes-dev \
+       --key '{"reporte_id": {"S": "ID"}, "fecha_creacion": {"S": "FECHA_VIEJA"}}'
+     
+     # 2. Crear item nuevo con nueva fecha
+     aws dynamodb put-item \
+       --table-name TablaReportes-dev \
+       --item '{...con nueva fecha_creacion...}'
+     ```
+
+8. **Los reportes no aparecen en el reporte diario**
+   - **Síntoma**: Ejecutas el DAG `reportes_estadisticos_diarios` pero el reporte está vacío o no incluye tus reportes
+   - **Causa**: El DAG procesa el **día anterior**, no el día actual
+   - **Solución**: 
+     - Crea reportes con fecha de ayer (ver sección "Cómo Probar los DAGs")
+     - O espera hasta mañana para que el DAG procese los reportes de hoy
+
+9. **Contenedores no inician**
    - Verificar espacio en disco: `df -h`
    - Verificar logs: `docker compose logs`
    - Reiniciar servicios: `docker compose restart`
@@ -1742,6 +2011,67 @@ AirflowInstanceProfile:
 
 **Solución**: Crear los DAGs directamente en la EC2 usando `nano` o `cat` (ver sección "Copiar DAGs Manualmente" arriba).
 
+#### Problema 5: Error de clave compuesta en DAG de clasificación
+
+**Síntoma**: El DAG `clasificar_reportes_automatico` falla con error:
+```
+Error procesando reporte [UUID]: An error occurred (ValidationException) when calling the UpdateItem operation: The provided key element does not match the schema
+```
+
+**Causa**: La tabla `TablaReportes-dev` tiene una clave compuesta (`reporte_id` + `fecha_creacion`), pero el código del DAG intentaba actualizar usando solo `reporte_id`:
+```python
+# ❌ INCORRECTO
+tabla.update_item(
+    Key={'reporte_id': reporte_id},  # Falta fecha_creacion
+    ...
+)
+```
+
+**Solución**: Actualizar el código del DAG para incluir ambas claves:
+```python
+# ✅ CORRECTO
+tabla.update_item(
+    Key={
+        'reporte_id': reporte_id,
+        'fecha_creacion': fecha_creacion  # Incluir ambas claves
+    },
+    ...
+)
+```
+
+**Archivo afectado**: `airflow/dags/clasificar_reportes.py` línea 74-85
+
+**Verificación**: Después de corregir, el DAG debería procesar reportes exitosamente y los logs mostrarán "Procesados X reportes de X sin clasificar" sin errores.
+
+#### Problema 6: No se puede actualizar fecha_creacion directamente en DynamoDB
+
+**Síntoma**: Al intentar actualizar `fecha_creacion` de un reporte para probar los DAGs, aparece el error:
+```
+An error occurred (ValidationException) when calling the UpdateItem operation: The provided key element does not match the schema
+```
+
+**Causa**: `fecha_creacion` es parte de la clave compuesta (sort key), por lo que no se puede actualizar directamente. DynamoDB requiere que uses ambas claves para identificar un item único.
+
+**Solución**: Eliminar el item viejo y crear uno nuevo con la nueva fecha:
+```bash
+# 1. Obtener el item completo
+aws dynamodb get-item \
+  --table-name TablaReportes-dev \
+  --key '{"reporte_id": {"S": "ID"}, "fecha_creacion": {"S": "FECHA_VIEJA"}}'
+
+# 2. Eliminar el item viejo
+aws dynamodb delete-item \
+  --table-name TablaReportes-dev \
+  --key '{"reporte_id": {"S": "ID"}, "fecha_creacion": {"S": "FECHA_VIEJA"}}'
+
+# 3. Crear item nuevo con nueva fecha_creacion
+aws dynamodb put-item \
+  --table-name TablaReportes-dev \
+  --item '{...todos los campos con nueva fecha_creacion...}'
+```
+
+**Nota**: Este proceso es necesario solo para pruebas. En producción, los reportes se crean con la fecha correcta automáticamente.
+
 #### Lecciones Aprendidas
 
 1. **UserData puede fallar silenciosamente**: Siempre verificar logs con `sudo cat /var/log/cloud-init-output.log` después del despliegue
@@ -1751,6 +2081,11 @@ AirflowInstanceProfile:
 5. **DAGs se detectan automáticamente**: No es necesario reiniciar servicios, solo esperar 30-60 segundos después de copiar archivos
 6. **IAM InstanceProfile requiere nombre de rol, no ARN**: Usar solo el nombre del rol en la propiedad `Roles`
 7. **CloudFormation no soporta todas las funciones en InstanceProfileName**: Mejor dejar que CloudFormation genere el nombre automáticamente
+8. **Clave compuesta en DynamoDB requiere ambas claves**: Al hacer `update_item` o `get_item`, siempre incluir todas las claves de la tabla (partition key + sort key)
+9. **No se puede actualizar una clave de ordenación**: Si necesitas cambiar el valor de una sort key, debes eliminar y recrear el item
+10. **Scripts de autoayuda pueden fallar**: Los scripts en `scripts/` son útiles pero pueden no funcionar en todos los entornos. Siempre tener instrucciones manuales como respaldo
+11. **Los DAGs procesan datos históricos**: Los DAGs de reportes estadísticos procesan el día/semana anterior, no el actual. Para pruebas, crear reportes con fecha de ayer
+12. **Revisar logs de Airflow es crucial**: Los errores de DynamoDB aparecen claramente en los logs del DAG, siempre revisarlos cuando algo falla
 
 #### Checklist Post-Despliegue
 
