@@ -7,7 +7,8 @@ provider:
   memorySize: 1024
   timeout: 29
   iam:
-    role: arn:aws:iam::414484658875:role/LabRole
+    role:
+      arn: arn:aws:iam::920413422536:role/LabRole
   environment:
     TENANT_ID: utec
     STAGE: ${self:provider.stage}
@@ -580,7 +581,7 @@ resources:
                 Fn::GetAtt:
                   - ActualizarEstadoFinalLambdaFunction
                   - Arn
-        RoleArn: arn:aws:iam::414484658875:role/LabRole
+        RoleArn: arn:aws:iam::920413422536:role/LabRole
       DependsOn:
         - ActualizarEstadoInicialLambdaFunction
         - EnCaminoLambdaFunction

@@ -8,7 +8,7 @@ set -e
 # Configuración
 FUNCTION_NAME="hackathon-utec-incidentes-dev-listarTrabajadores"
 REGION="us-east-1"
-ROLE_ARN="arn:aws:iam::414484658875:role/LabRole"
+ROLE_ARN="arn:aws:iam::920413422536:role/LabRole"
 HANDLER="handlers/usuarios/listarTrabajadores.handler"
 RUNTIME="nodejs20.x"
 TIMEOUT=29
@@ -165,7 +165,7 @@ aws lambda add-permission \
   --statement-id "api-gateway-invoke-$(date +%s)" \
   --action lambda:InvokeFunction \
   --principal apigateway.amazonaws.com \
-  --source-arn "arn:aws:execute-api:$REGION:414484658875:$API_ID/*/*" \
+  --source-arn "arn:aws:execute-api:$REGION:920413422536:$API_ID/*/*" \
   --region "$REGION" > /dev/null 2>&1 || echo -e "${YELLOW}⚠️ Permiso ya existe${NC}"
 
 # Configurar CORS completo para Amplify
