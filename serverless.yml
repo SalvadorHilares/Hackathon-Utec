@@ -280,12 +280,6 @@ functions:
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
       REGION: ${self:provider.region}
       STAGE: ${self:provider.stage}
-    iamRoleStatements:
-      - Effect: Allow
-        Action:
-          - execute-api:ManageConnections
-        Resource:
-          - arn:aws:execute-api:${self:provider.region}:*:vwomh5is13/*
 
   # Microservicio de Estado Trabajo - WebSocket Trabajador
   # Nota: $connect y $disconnect no pueden tener prefijos, así que usamos las mismas rutas
