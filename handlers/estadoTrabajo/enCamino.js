@@ -1,4 +1,4 @@
-const { getItem, putItem, getTimestamp, generateUUID } = require('../../shared/dynamodb');
+const { getItem, putItem, getTimestamp, generateUUID, query } = require('../../shared/dynamodb');
 const { sendTaskSuccess } = require('../../shared/stepfunctions');
 const { verifyJwtFromWebSocket } = require('../../utils/auth');
 const { sendMessage } = require('../../shared/websocket');
@@ -6,6 +6,7 @@ const { sendMessage } = require('../../shared/websocket');
 const TABLA_ESTADO_TRABAJO = process.env.TABLA_ESTADO_TRABAJO;
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
+const TABLA_CONEXIONES = process.env.TABLA_CONEXIONES;
 
 async function handler(event) {
   const connectionId = event.requestContext?.connectionId;
@@ -144,7 +145,7 @@ async function handler(event) {
       }
     }
     
-    // Enviar respuesta al cliente WebSocket
+    // Enviar respuesta al cliente WebSocket (trabajador)
     if (endpoint && connectionId) {
       await sendMessage(endpoint, connectionId, {
         mensaje: 'Estado actualizado: En camino',
@@ -153,6 +154,56 @@ async function handler(event) {
         trabajador_id,
         fecha_en_camino
       });
+    }
+    
+    // Notificar a TODOS los clientes conectados (estudiante, administrador, etc.)
+    try {
+      // Buscar conexiones que monitorean este reporte específico
+      const conexionesReporte = await query(
+        TABLA_CONEXIONES,
+        'reporte_id = :reporte_id',
+        { ':reporte_id': reporte_id },
+        'reporte_id-index'
+      );
+      
+      // Buscar conexiones que monitorean todos los reportes (reporte_id = 'ALL')
+      const conexionesAll = await query(
+        TABLA_CONEXIONES,
+        'reporte_id = :reporte_id',
+        { ':reporte_id': 'ALL' },
+        'reporte_id-index'
+      );
+      
+      // Combinar ambas listas y filtrar la conexión del trabajador actual
+      const todasLasConexiones = [...conexionesReporte, ...conexionesAll]
+        .filter(con => con.connection_id !== connectionId);
+      
+      console.log(`Notificando a ${todasLasConexiones.length} clientes conectados sobre cambio de estado`);
+      
+      // Enviar notificación a cada cliente conectado
+      for (const conexion of todasLasConexiones) {
+        try {
+          const mensajeNotificacion = {
+            tipo: 'actualizacion_estado',
+            reporte_id,
+            estado: 'en_camino',
+            timestamp: fecha_en_camino,
+            timestamp_notificacion: new Date().toISOString(),
+            trabajador_id,
+            descripcion: `Trabajador ${trabajador_id} va en camino`
+          };
+          
+          await sendMessage(endpoint, conexion.connection_id, mensajeNotificacion);
+        } catch (error) {
+          // Ignorar errores de conexiones muertas
+          if (error.name !== 'GoneException' && error.statusCode !== 410) {
+            console.error(`Error al notificar a ${conexion.connection_id}:`, error.message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error al notificar a clientes conectados:', error);
+      // No fallar si hay error en las notificaciones
     }
     
     return { statusCode: 200 };

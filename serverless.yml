@@ -211,6 +211,7 @@ functions:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TABLA_CONEXIONES: ${self:custom.tablas.conexiones}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   trabajadorLlego:
@@ -222,6 +223,7 @@ functions:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TABLA_CONEXIONES: ${self:custom.tablas.conexiones}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   trabajoTerminado:
@@ -233,6 +235,7 @@ functions:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TABLA_CONEXIONES: ${self:custom.tablas.conexiones}
       S3_BUCKET: ${self:custom.s3Bucket}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 

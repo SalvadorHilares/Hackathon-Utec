@@ -1,4 +1,4 @@
-const { getItem, putItem, getTimestamp, generateUUID } = require('../../shared/dynamodb');
+const { getItem, putItem, getTimestamp, generateUUID, query } = require('../../shared/dynamodb');
 const { sendTaskSuccess } = require('../../shared/stepfunctions');
 const { verifyJwtFromWebSocket } = require('../../utils/auth');
 const { sendMessage } = require('../../shared/websocket');
@@ -7,6 +7,7 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const TABLA_ESTADO_TRABAJO = process.env.TABLA_ESTADO_TRABAJO;
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
+const TABLA_CONEXIONES = process.env.TABLA_CONEXIONES;
 const S3_BUCKET = process.env.S3_BUCKET;
 const STEP_FUNCTIONS_ARN = process.env.STEP_FUNCTIONS_ARN;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
@@ -181,7 +182,7 @@ async function handler(event) {
       }
     }
     
-    // Enviar respuesta al cliente WebSocket
+    // Enviar respuesta al cliente WebSocket (trabajador)
     if (endpoint && connectionId) {
       await sendMessage(endpoint, connectionId, {
         mensaje: 'Trabajo terminado exitosamente',
@@ -191,6 +192,51 @@ async function handler(event) {
         fecha_terminacion,
         s3_key: s3Key
       });
+    }
+    
+    // Notificar a TODOS los clientes conectados (estudiante, administrador, etc.)
+    try {
+      const conexionesReporte = await query(
+        TABLA_CONEXIONES,
+        'reporte_id = :reporte_id',
+        { ':reporte_id': reporte_id },
+        'reporte_id-index'
+      );
+      
+      const conexionesAll = await query(
+        TABLA_CONEXIONES,
+        'reporte_id = :reporte_id',
+        { ':reporte_id': 'ALL' },
+        'reporte_id-index'
+      );
+      
+      const todasLasConexiones = [...conexionesReporte, ...conexionesAll]
+        .filter(con => con.connection_id !== connectionId);
+      
+      console.log(`Notificando a ${todasLasConexiones.length} clientes conectados sobre cambio de estado`);
+      
+      for (const conexion of todasLasConexiones) {
+        try {
+          const mensajeNotificacion = {
+            tipo: 'actualizacion_estado',
+            reporte_id,
+            estado: 'trabajo_terminado',
+            timestamp: fecha_terminacion,
+            timestamp_notificacion: new Date().toISOString(),
+            trabajador_id,
+            descripcion: `Trabajo terminado por ${trabajador_id}`,
+            s3_key: s3Key
+          };
+          
+          await sendMessage(endpoint, conexion.connection_id, mensajeNotificacion);
+        } catch (error) {
+          if (error.name !== 'GoneException' && error.statusCode !== 410) {
+            console.error(`Error al notificar a ${conexion.connection_id}:`, error.message);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error al notificar a clientes conectados:', error);
     }
     
     return { statusCode: 200 };
