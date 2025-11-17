@@ -56,6 +56,27 @@ functions:
       TABLA_USUARIOS: ${self:custom.tablas.usuarios}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
+  # Gestión de Usuarios
+  listarTrabajadores:
+    handler: handlers/usuarios/listarTrabajadores.handler
+    events:
+      - http:
+          path: usuarios/trabajadores
+          method: get
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: false
+    environment:
+      TABLA_USUARIOS: ${self:custom.tablas.usuarios}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
+
   # Microservicio de Reportes - REST API
   crearReporte:
     handler: handlers/reportes/crearReporte.handler
