@@ -97,6 +97,145 @@ const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
 
 **Nota:** Estas URLs pueden cambiar después de cada despliegue. Verifica los endpoints actuales en la salida de `sls deploy`.
 
+### 🚀 Estrategia de Despliegue Híbrida
+
+Debido a las limitaciones de tamaño del template de CloudFormation (máximo 51,200 caracteres), el proyecto utiliza una **estrategia híbrida** de despliegue:
+
+#### 📋 Componentes del Sistema
+
+1. **Despliegue Principal con Serverless Framework** (`sls deploy`)
+   - Todas las funciones Lambda principales
+   - Tablas DynamoDB
+   - WebSocket API
+   - Step Functions
+   - SNS Topics
+   - S3 Buckets
+   - Configuración CORS simplificada (`cors: true`)
+
+2. **Despliegue de Recursos Adicionales con Scripts Bash**
+   - Funciones nuevas que no caben en el template
+   - Recursos opcionales o experimentales
+   - Configuración CORS completa para AWS Amplify
+
+#### 🔧 Cómo Desplegar
+
+**Despliegue Principal (Serverless Framework):**
+
+```bash
+# Desde CloudShell o terminal con AWS CLI configurado
+cd Hackathon-Utec
+sls deploy --stage dev
+```
+
+**Despliegue de Recursos Adicionales (Scripts Bash):**
+
+```bash
+# Desplegar funciones de autenticación con CORS completo para Amplify
+./scripts/deploy-registrar-usuario.sh
+./scripts/deploy-login-usuario.sh
+
+# Desplegar función listarTrabajadores con CORS completo para Amplify
+./scripts/deploy-listar-trabajadores.sh
+```
+
+**⚠️ Nota Importante para Amplify:**
+- Los endpoints de autenticación (`/auth/register` y `/auth/login`) **DEBEN** desplegarse con los scripts bash para tener CORS completo
+- Sin estos scripts, Amplify Auth puede fallar con errores de CORS
+- Ejecuta estos scripts después de `sls deploy` para asegurar compatibilidad completa
+
+#### 📝 Funciones Desplegadas con Scripts
+
+Estas funciones requieren CORS completo para AWS Amplify y se despliegan con scripts bash:
+
+1. **`registrarUsuario`**: Registro de nuevos usuarios
+   - Script: `scripts/deploy-registrar-usuario.sh`
+   - Endpoint: `POST /auth/register`
+   - CORS: Configurado completo para AWS Amplify
+   - ⚠️ **Importante**: Requerido para Amplify Auth
+
+2. **`loginUsuario`**: Inicio de sesión de usuarios
+   - Script: `scripts/deploy-login-usuario.sh`
+   - Endpoint: `POST /auth/login`
+   - CORS: Configurado completo para AWS Amplify
+   - ⚠️ **Importante**: Requerido para Amplify Auth
+
+3. **`listarTrabajadores`**: Lista todos los trabajadores registrados (solo para administradores)
+   - Script: `scripts/deploy-listar-trabajadores.sh`
+   - Endpoint: `GET /usuarios/trabajadores`
+   - CORS: Configurado completo para AWS Amplify
+
+#### ⚙️ Configuración CORS
+
+**En `serverless.yml`:**
+- Usamos `cors: true` (configuración simplificada)
+- Genera menos recursos en CloudFormation
+- Funciona correctamente para la mayoría de casos
+
+**En Scripts Bash:**
+- Configuración CORS completa y explícita
+- Incluye todos los headers necesarios para AWS Amplify:
+  - `Access-Control-Allow-Origin: *`
+  - `Access-Control-Allow-Headers: Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent,X-Amzn-Trace-Id`
+  - `Access-Control-Allow-Methods: OPTIONS,GET,POST,PUT,DELETE`
+  - `Access-Control-Allow-Credentials: false`
+
+#### 🔍 Verificar Despliegue
+
+```bash
+# Verificar funciones Lambda
+aws lambda get-function --function-name hackathon-utec-incidentes-dev-registrarUsuario --region us-east-1
+aws lambda get-function --function-name hackathon-utec-incidentes-dev-loginUsuario --region us-east-1
+aws lambda get-function --function-name hackathon-utec-incidentes-dev-listarTrabajadores --region us-east-1
+
+# Verificar endpoints en API Gateway
+aws apigateway get-resources --rest-api-id ovgixvti60 --region us-east-1 --query "items[?path=='/auth/register']"
+aws apigateway get-resources --rest-api-id ovgixvti60 --region us-east-1 --query "items[?path=='/auth/login']"
+aws apigateway get-resources --rest-api-id ovgixvti60 --region us-east-1 --query "items[?path=='/usuarios/trabajadores']"
+```
+
+#### 📚 Documentación de Scripts
+
+Cada script bash incluye:
+- ✅ Configuración completa de Lambda (runtime, memory, timeout, environment)
+- ✅ Creación/actualización de recursos API Gateway
+- ✅ Configuración CORS completa para Amplify
+- ✅ Permisos IAM necesarios
+- ✅ Deploy automático a stage `dev`
+
+#### ⚠️ Notas Importantes
+
+1. **Ejecutar scripts desde CloudShell o Linux**: Los scripts bash requieren un entorno Unix
+2. **Verificar API Gateway ID**: Si el ID de tu API Gateway cambia, actualiza la variable `API_ID` en el script
+3. **Permisos AWS CLI**: Asegúrate de tener credenciales AWS configuradas
+4. **Orden de despliegue**: Siempre ejecuta `sls deploy` primero, luego los scripts adicionales
+
+#### 🛠️ Agregar Nuevas Funciones con Scripts
+
+Si necesitas agregar una nueva función que no cabe en el template o requiere CORS completo para Amplify:
+
+1. Crea el handler en `handlers/`
+2. Copia uno de los scripts existentes como plantilla:
+   - `scripts/deploy-registrar-usuario.sh` (para POST)
+   - `scripts/deploy-login-usuario.sh` (para POST)
+   - `scripts/deploy-listar-trabajadores.sh` (para GET)
+3. Actualiza las variables de configuración
+4. Ejecuta el script
+
+**Ejemplo de variables a actualizar:**
+
+```bash
+FUNCTION_NAME="hackathon-utec-incidentes-dev-tuNuevaFuncion"
+HANDLER="handlers/tu/carpeta/tuFuncion.handler"
+# ... resto de configuración
+```
+
+**Scripts Disponibles:**
+- `deploy-registrar-usuario.sh` - POST `/auth/register`
+- `deploy-login-usuario.sh` - POST `/auth/login`
+- `deploy-listar-trabajadores.sh` - GET `/usuarios/trabajadores`
+
+---
+
 ### ⚠️ Importante para el Frontend
 
 1. **Autenticación JWT Obligatoria**: TODOS los endpoints (REST y WebSocket) requieren un token JWT válido

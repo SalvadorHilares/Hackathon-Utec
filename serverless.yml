@@ -23,16 +23,7 @@ functions:
       - http:
           path: auth/register
           method: post
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_USUARIOS: ${self:custom.tablas.usuarios}
 
@@ -42,16 +33,7 @@ functions:
       - http:
           path: auth/login
           method: post
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_USUARIOS: ${self:custom.tablas.usuarios}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
@@ -63,16 +45,7 @@ functions:
       - http:
           path: usuarios/trabajadores
           method: get
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_USUARIOS: ${self:custom.tablas.usuarios}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
@@ -84,16 +57,7 @@ functions:
       - http:
           path: reportes
           method: post
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
@@ -108,16 +72,7 @@ functions:
       - http:
           path: reportes/{reporte_id}
           method: put
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
@@ -130,16 +85,7 @@ functions:
       - http:
           path: reportes/{reporte_id}/asignar
           method: post
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
@@ -154,16 +100,7 @@ functions:
       - http:
           path: reportes/{reporte_id}
           method: get
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
@@ -175,16 +112,7 @@ functions:
       - http:
           path: reportes/{reporte_id}/completo
           method: get
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
@@ -198,16 +126,7 @@ functions:
       - http:
           path: reportes/{reporte_id}/cerrar
           method: post
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
@@ -220,16 +139,7 @@ functions:
       - http:
           path: reportes/{reporte_id}/historial
           method: get
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
@@ -240,16 +150,7 @@ functions:
       - http:
           path: reportes
           method: get
-          cors:
-            origin: '*'
-            headers:
-              - Content-Type
-              - X-Amz-Date
-              - Authorization
-              - X-Api-Key
-              - X-Amz-Security-Token
-              - X-Amz-User-Agent
-            allowCredentials: false
+          cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
