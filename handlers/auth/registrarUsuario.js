@@ -1,5 +1,6 @@
 // handlers/auth/registrarUsuario.js
 const { query, putItem, generateUUID } = require('../../shared/dynamodb');
+const { created, badRequest, internalError } = require('../../shared/response');
 const crypto = require('crypto');
 
 const TABLE = process.env.TABLA_USUARIOS;
@@ -10,21 +11,13 @@ function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
 }
 
-function response(statusCode, body) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
-
 exports.handler = async (event) => {
   try {
     let body;
     try {
       body = JSON.parse(event.body || '{}');
     } catch {
-      return response(400, { message: 'Body JSON inválido' });
+      return badRequest('Body JSON inválido');
     }
 
     const email = (body.email || '').trim().toLowerCase();
@@ -32,17 +25,17 @@ exports.handler = async (event) => {
     const rol = (body.rol || '').trim().toLowerCase();
 
     if (!email || !password || !rol) {
-      return response(400, { message: 'email, password y rol son requeridos' });
+      return badRequest('email, password y rol son requeridos');
     }
     if (!EMAIL_REGEX.test(email)) {
-      return response(400, { message: 'email inválido' });
+      return badRequest('email inválido');
     }
     if (!ROLES_PERMITIDOS.has(rol)) {
-      return response(400, { message: 'rol inválido' });
+      return badRequest('rol inválido');
     }
 
     if (!TABLE) {
-      return response(500, { message: 'Error de configuración: tabla no definida' });
+      return internalError('Error de configuración: tabla no definida');
     }
 
     // Verificar si ya existe usuario con ese email
@@ -55,11 +48,11 @@ exports.handler = async (event) => {
       );
 
       if (items && items.length > 0) {
-        return response(400, { message: 'Usuario ya registrado' });
+        return badRequest('Usuario ya registrado');
       }
     } catch (err) {
       console.error('Error consultando usuarios:', err);
-      return response(500, { message: `Error consultando usuarios: ${err.message}` });
+      return internalError(`Error consultando usuarios: ${err.message}`);
     }
 
     const usuario_id = generateUUID();
@@ -78,10 +71,10 @@ exports.handler = async (event) => {
       await putItem(TABLE, item);
     } catch (err) {
       console.error('Error guardando usuario:', err);
-      return response(500, { message: `Error guardando usuario: ${err.message}` });
+      return internalError(`Error guardando usuario: ${err.message}`);
     }
 
-    return response(201, {
+    return created({
       usuario_id,
       email,
       rol,
@@ -89,9 +82,6 @@ exports.handler = async (event) => {
     });
   } catch (error) {
     console.error('Error inesperado en handler:', error);
-    return response(500, { 
-      message: 'Error interno del servidor',
-      error: error.message
-    });
+    return internalError(`Error interno del servidor: ${error.message}`);
   }
 };

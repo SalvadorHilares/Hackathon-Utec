@@ -1,5 +1,6 @@
 // handlers/auth/loginUsuario.js
 const { query } = require('../../shared/dynamodb');
+const { createResponse, unauthorized, badRequest, internalError } = require('../../shared/response');
 const crypto = require('crypto');
 
 const TABLE = process.env.TABLA_USUARIOS;
@@ -40,35 +41,27 @@ function createJwt(usuario_id, email, rol, expSeconds = 4 * 3600) {
   return `${signingInput}.${signatureB64}`;
 }
 
-function response(statusCode, body) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
-
 exports.handler = async (event) => {
   try {
     let body;
     try {
       body = JSON.parse(event.body || '{}');
     } catch {
-      return response(400, { message: 'Body JSON inválido' });
+      return badRequest('Body JSON inválido');
     }
 
     const email = (body.email || '').trim().toLowerCase();
     const password = body.password || '';
 
     if (!email || !password) {
-      return response(400, { message: 'email y password son requeridos' });
+      return badRequest('email y password son requeridos');
     }
     if (!EMAIL_REGEX.test(email)) {
-      return response(400, { message: 'email inválido' });
+      return badRequest('email inválido');
     }
 
     if (!TABLE) {
-      return response(500, { message: 'Error de configuración: tabla no definida' });
+      return internalError('Error de configuración: tabla no definida');
     }
 
     let user;
@@ -81,17 +74,17 @@ exports.handler = async (event) => {
       );
 
       if (!items || items.length === 0) {
-        return response(401, { message: 'Credenciales inválidas' });
+        return unauthorized('Credenciales inválidas');
       }
       user = items[0];
     } catch (err) {
       console.error('Error consultando usuario:', err);
-      return response(500, { message: `Error consultando usuario: ${err.message}` });
+      return internalError(`Error consultando usuario: ${err.message}`);
     }
 
     const stored_hash = user.password_hash;
     if (!stored_hash || stored_hash !== hashPassword(password)) {
-      return response(401, { message: 'Credenciales inválidas' });
+      return unauthorized('Credenciales inválidas');
     }
 
     const usuario_id = user.usuario_id;
@@ -99,7 +92,7 @@ exports.handler = async (event) => {
 
     const token = createJwt(usuario_id, email, rol);
 
-    return response(200, {
+    return createResponse(200, {
       token,
       usuario: {
         usuario_id,
@@ -109,9 +102,6 @@ exports.handler = async (event) => {
     });
   } catch (error) {
     console.error('Error inesperado en handler:', error);
-    return response(500, { 
-      message: 'Error interno del servidor',
-      error: error.message
-    });
+    return internalError(`Error interno del servidor: ${error.message}`);
   }
 };
