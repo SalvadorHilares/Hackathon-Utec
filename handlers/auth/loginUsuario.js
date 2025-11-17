@@ -1,8 +1,7 @@
 // handlers/auth/loginUsuario.js
-const AWS = require('aws-sdk');
+const { query } = require('../../shared/dynamodb');
 const crypto = require('crypto');
 
-const dynamodb = new AWS.DynamoDB.DocumentClient();
 const TABLE = process.env.TABLA_USUARIOS;
 const TOKEN_SECRET = process.env.TOKEN_SECRET || 'alerta-utec-123';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i; // Acepta cualquier email válido
@@ -50,57 +49,69 @@ function response(statusCode, body) {
 }
 
 exports.handler = async (event) => {
-  let body;
   try {
-    body = JSON.parse(event.body || '{}');
-  } catch {
-    return response(400, { message: 'Body JSON inválido' });
-  }
+    let body;
+    try {
+      body = JSON.parse(event.body || '{}');
+    } catch {
+      return response(400, { message: 'Body JSON inválido' });
+    }
 
-  const email = (body.email || '').trim().toLowerCase();
-  const password = body.password || '';
+    const email = (body.email || '').trim().toLowerCase();
+    const password = body.password || '';
 
-  if (!email || !password) {
-    return response(400, { message: 'email y password son requeridos' });
-  }
-  if (!EMAIL_REGEX.test(email)) {
-    return response(400, { message: 'email inválido' });
-  }
+    if (!email || !password) {
+      return response(400, { message: 'email y password son requeridos' });
+    }
+    if (!EMAIL_REGEX.test(email)) {
+      return response(400, { message: 'email inválido' });
+    }
 
-  let user;
-  try {
-    const result = await dynamodb.query({
-      TableName: TABLE,
-      IndexName: 'email-index',
-      KeyConditionExpression: 'email = :email',
-      ExpressionAttributeValues: { ':email': email },
-    }).promise();
+    if (!TABLE) {
+      return response(500, { message: 'Error de configuración: tabla no definida' });
+    }
 
-    const items = result.Items || [];
-    if (items.length === 0) {
+    let user;
+    try {
+      const items = await query(
+        TABLE,
+        'email = :email',
+        { ':email': email },
+        'email-index'
+      );
+
+      if (!items || items.length === 0) {
+        return response(401, { message: 'Credenciales inválidas' });
+      }
+      user = items[0];
+    } catch (err) {
+      console.error('Error consultando usuario:', err);
+      return response(500, { message: `Error consultando usuario: ${err.message}` });
+    }
+
+    const stored_hash = user.password_hash;
+    if (!stored_hash || stored_hash !== hashPassword(password)) {
       return response(401, { message: 'Credenciales inválidas' });
     }
-    user = items[0];
-  } catch (err) {
-    return response(500, { message: `Error consultando usuario: ${err.message}` });
+
+    const usuario_id = user.usuario_id;
+    const rol = user.rol;
+
+    const token = createJwt(usuario_id, email, rol);
+
+    return response(200, {
+      token,
+      usuario: {
+        usuario_id,
+        email,
+        rol,
+      },
+    });
+  } catch (error) {
+    console.error('Error inesperado en handler:', error);
+    return response(500, { 
+      message: 'Error interno del servidor',
+      error: error.message
+    });
   }
-
-  const stored_hash = user.password_hash;
-  if (!stored_hash || stored_hash !== hashPassword(password)) {
-    return response(401, { message: 'Credenciales inválidas' });
-  }
-
-  const usuario_id = user.usuario_id;
-  const rol = user.rol;
-
-  const token = createJwt(usuario_id, email, rol);
-
-  return response(200, {
-    token,
-    usuario: {
-      usuario_id,
-      email,
-      rol,
-    },
-  });
 };
