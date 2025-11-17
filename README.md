@@ -2,44 +2,746 @@
 
 **API REST + WebSocket para actualizaciones en tiempo real**
 
+## 🚀 Quick Start - ¡Empieza Aquí!
+
+### Para Desarrolladores Frontend
+
+Este documento contiene **TODO** lo que necesitas para integrar el backend:
+
+1. **📦 Servicios Listos para Copiar**: Ve directamente a [Guía Rápida para Integración Frontend](#-guía-rápida-para-integración-frontend)
+   - `auth.service.js` - Autenticación completa
+   - `reportes.service.js` - Gestión de reportes
+   - `websocket.service.js` - Notificaciones en tiempo real
+
+2. **🎯 Ejemplos por Pantalla**: [Ejemplos de Uso](#-ejemplos-de-uso-por-pantalla)
+   - Login/Registro
+   - Dashboard de Estudiante
+   - Dashboard de Administrador
+   - Panel de Trabajador
+
+3. **🔌 WebSocket**: [Actualizaciones en Tiempo Real](#websocket---actualizaciones-en-tiempo-real)
+   - Conectar y escuchar cambios
+   - Enviar actualizaciones de estado
+   - Manejo de errores y reconexión
+
+4. **🔐 Seguridad**: Todos los endpoints requieren JWT. Token en:
+   - REST: Header `Authorization: Bearer <token>`
+   - WebSocket: Query string `?token=<token>`
+
+### URLs del Sistema (Actualizadas)
+
+```javascript
+// Producción
+const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
+const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
+```
+
+### Flujos Probados ✅
+
+- ✅ Registro → Login → Crear Reporte → WebSocket (Estudiante)
+- ✅ Login → Ver Todos → Asignar → WebSocket Global (Administrador)  
+- ✅ Login → WebSocket → En Camino → Llegó → Terminado (Trabajador)
+
+### ⚡ Demo HTML
+
+Puedes ver un ejemplo funcional completo en [`test-websocket-demo.html`](test-websocket-demo.html) que muestra los tres roles en acción.
+
 ---
 
 ## 📋 Tabla de Contenidos
 
 1. [Configuración Inicial](#configuración-inicial)
-2. [Autenticación y Autorización](#-autenticación-y-autorización)
+2. [Guía Rápida para Integración Frontend](#-guía-rápida-para-integración-frontend)
+   - [Sistema de Autenticación](#sistema-de-autenticación---implementación-completa)
+   - [Servicio de Reportes](#2-servicio-de-reportes-reportesservicejs)
+   - [Servicio de WebSocket](#3-servicio-de-websocket-websocketservicejs)
+   - [Ejemplos de Uso por Pantalla](#-ejemplos-de-uso-por-pantalla)
+   - [Mejores Prácticas](#-mejores-prácticas)
+3. [Autenticación y Autorización](#-autenticación-y-autorización)
    - [Registro de Usuario](#registro-de-usuario)
    - [Inicio de Sesión](#inicio-de-sesión)
    - [Uso de Tokens JWT](#uso-de-tokens-jwt)
    - [Roles y Permisos](#roles-y-permisos)
-3. [Arquitectura del Sistema](#arquitectura-del-sistema)
+4. [Arquitectura del Sistema](#arquitectura-del-sistema)
    - [Diagrama de Arquitectura General](#diagrama-de-arquitectura-general)
    - [Flujo Completo: Admin y Trabajador](#flujo-completo-admin-y-trabajador)
-4. [Endpoints REST API](#endpoints-rest-api)
-5. [WebSocket - Actualizaciones en Tiempo Real](#websocket---actualizaciones-en-tiempo-real)
-6. [Flujos Completos por Rol](#flujos-completos-por-rol)
-7. [Filtros y Búsqueda](#filtros-y-búsqueda)
-8. [Manejo de Errores](#manejo-de-errores)
-9. [Ejemplos de Código](#ejemplos-de-código)
-10. [Apache Airflow - Orquestación y Automatización](#-apache-airflow---orquestación-y-automatización)
+5. [Endpoints REST API](#endpoints-rest-api)
+6. [WebSocket - Actualizaciones en Tiempo Real](#websocket---actualizaciones-en-tiempo-real)
+7. [Flujos Completos por Rol](#flujos-completos-por-rol)
+8. [Filtros y Búsqueda](#filtros-y-búsqueda)
+9. [Manejo de Errores](#manejo-de-errores)
+10. [Ejemplos de Código](#ejemplos-de-código)
+11. [Detalles Técnicos y Arquitectura de Notificaciones WebSocket](#-detalles-técnicos-y-arquitectura-de-notificaciones-websocket)
+   - [Flujo de Notificación Completo](#flujo-de-notificación-completo)
+   - [Seguridad y Validación](#seguridad-y-validación)
+   - [Errores Comunes y Soluciones](#-errores-comunes-y-soluciones)
+   - [Patrones de Implementación](#patrones-de-implementación-recomendados)
+   - [Testing y Validación](#-testing-y-validación)
+12. [Apache Airflow - Orquestación y Automatización](#-apache-airflow---orquestación-y-automatización)
    - [Integración con el Sistema Serverless](#integración-con-el-sistema-serverless)
-11. [Notificaciones SNS](#-notificaciones-sns-simple-notification-service)
+13. [Notificaciones SNS](#-notificaciones-sns-simple-notification-service)
 
 ---
 
 ## 🔧 Configuración Inicial
 
-### URLs Base
+### ⚡ URLs Base Actuales (Actualizadas)
 
 ```javascript
 // REST API
-const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
+const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
 
 // WebSocket API
-const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
 ```
 
 **Nota:** Estas URLs pueden cambiar después de cada despliegue. Verifica los endpoints actuales en la salida de `sls deploy`.
+
+### ⚠️ Importante para el Frontend
+
+1. **Autenticación JWT Obligatoria**: TODOS los endpoints (REST y WebSocket) requieren un token JWT válido
+2. **Token en Headers REST**: `Authorization: Bearer <token>`
+3. **Token en Query String WebSocket**: `?token=<token>`
+4. **Roles de Usuario**: `estudiante`, `administrativo`, `trabajador`
+5. **Manejo de Errores**: Implementar reintentos y reconexión automática para WebSocket
+
+---
+
+## 🎨 Guía Rápida para Integración Frontend
+
+Esta sección es **tu punto de partida** para integrar el backend con tu aplicación frontend. Aquí encontrarás ejemplos listos para usar y las mejores prácticas.
+
+### 📦 Dependencias Recomendadas
+
+```bash
+# No se requieren dependencias adicionales para JavaScript vanilla
+# Para React/Vue/Angular, usa las librerías nativas de WebSocket
+```
+
+### 🔐 Sistema de Autenticación - Implementación Completa
+
+#### 1. Servicio de Autenticación (auth.service.js)
+
+```javascript
+// auth.service.js - Copiar y pegar en tu proyecto
+const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
+
+class AuthService {
+  constructor() {
+    this.TOKEN_KEY = 'auth_token';
+    this.USER_KEY = 'user_data';
+  }
+
+  // Registrar nuevo usuario
+  async registrar(email, password, rol) {
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, rol })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error al registrar usuario');
+    }
+
+    return await response.json();
+  }
+
+  // Iniciar sesión
+  async login(email, password) {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Credenciales inválidas');
+    }
+
+    const data = await response.json();
+    
+    // Guardar token y datos del usuario
+    localStorage.setItem(this.TOKEN_KEY, data.token);
+    localStorage.setItem(this.USER_KEY, JSON.stringify(data.usuario));
+
+    return data;
+  }
+
+  // Cerrar sesión
+  logout() {
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem(this.USER_KEY);
+  }
+
+  // Obtener token actual
+  getToken() {
+    return localStorage.getItem(this.TOKEN_KEY);
+  }
+
+  // Obtener usuario actual
+  getUser() {
+    const userData = localStorage.getItem(this.USER_KEY);
+    return userData ? JSON.parse(userData) : null;
+  }
+
+  // Verificar si está autenticado
+  isAuthenticated() {
+    return !!this.getToken();
+  }
+
+  // Verificar rol del usuario
+  hasRole(rol) {
+    const user = this.getUser();
+    return user && user.rol === rol;
+  }
+
+  // Helper para hacer peticiones autenticadas
+  async fetchAutenticado(url, options = {}) {
+    const token = this.getToken();
+    if (!token) {
+      throw new Error('No autenticado. Por favor inicia sesión.');
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers
+    };
+
+    const response = await fetch(url, {
+      ...options,
+      headers
+    });
+
+    // Manejar sesión expirada
+    if (response.status === 401) {
+      this.logout();
+      throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+    }
+
+    return response;
+  }
+}
+
+// Exportar instancia única (singleton)
+const authService = new AuthService();
+export default authService;
+```
+
+#### 2. Servicio de Reportes (reportes.service.js)
+
+```javascript
+// reportes.service.js - Copiar y pegar en tu proyecto
+import authService from './auth.service.js';
+
+const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
+
+class ReportesService {
+  // Crear nuevo reporte
+  async crear(datos) {
+    const response = await authService.fetchAutenticado(`${API_BASE_URL}/reportes`, {
+      method: 'POST',
+      body: JSON.stringify(datos)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.mensaje || 'Error al crear reporte');
+    }
+
+    return await response.json();
+  }
+
+  // Listar reportes (con filtros opcionales)
+  async listar(filtros = {}) {
+    const params = new URLSearchParams();
+    
+    if (filtros.estado) params.append('estado', filtros.estado);
+    if (filtros.tipo) params.append('tipo', filtros.tipo);
+    if (filtros.nivel_urgencia) params.append('nivel_urgencia', filtros.nivel_urgencia);
+    if (filtros.trabajador_asignado) params.append('trabajador_asignado', filtros.trabajador_asignado);
+
+    const queryString = params.toString();
+    const url = `${API_BASE_URL}/reportes${queryString ? '?' + queryString : ''}`;
+
+    const response = await authService.fetchAutenticado(url);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.mensaje || 'Error al listar reportes');
+    }
+
+    return await response.json();
+  }
+
+  // Obtener reporte completo por ID
+  async obtener(reporteId) {
+    const response = await authService.fetchAutenticado(
+      `${API_BASE_URL}/reportes/${reporteId}/completo`
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.mensaje || 'Error al obtener reporte');
+    }
+
+    return await response.json();
+  }
+
+  // Actualizar reporte
+  async actualizar(reporteId, datos) {
+    const response = await authService.fetchAutenticado(
+      `${API_BASE_URL}/reportes/${reporteId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(datos)
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.mensaje || 'Error al actualizar reporte');
+    }
+
+    return await response.json();
+  }
+
+  // Asignar trabajador (solo administrativo)
+  async asignar(reporteId, trabajadorId) {
+    const response = await authService.fetchAutenticado(
+      `${API_BASE_URL}/reportes/${reporteId}/asignar`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ trabajador_id: trabajadorId })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.mensaje || 'Error al asignar reporte');
+    }
+
+    return await response.json();
+  }
+
+  // Cerrar reporte (solo administrativo)
+  async cerrar(reporteId, resolucion) {
+    const response = await authService.fetchAutenticado(
+      `${API_BASE_URL}/reportes/${reporteId}/cerrar`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ resolucion })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.mensaje || 'Error al cerrar reporte');
+    }
+
+    return await response.json();
+  }
+
+  // Obtener historial de cambios
+  async obtenerHistorial(reporteId) {
+    const response = await authService.fetchAutenticado(
+      `${API_BASE_URL}/reportes/${reporteId}/historial`
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.mensaje || 'Error al obtener historial');
+    }
+
+    return await response.json();
+  }
+}
+
+// Exportar instancia única
+const reportesService = new ReportesService();
+export default reportesService;
+```
+
+#### 3. Servicio de WebSocket (websocket.service.js)
+
+```javascript
+// websocket.service.js - Copiar y pegar en tu proyecto
+import authService from './auth.service.js';
+
+const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
+
+class WebSocketService {
+  constructor() {
+    this.ws = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 3000;
+    this.listeners = new Map();
+    this.reporteId = null;
+  }
+
+  // Conectar al WebSocket
+  conectar(reporteId = null) {
+    const token = authService.getToken();
+    if (!token) {
+      throw new Error('Token requerido para conectar WebSocket');
+    }
+
+    this.reporteId = reporteId;
+    
+    // Construir URL con token
+    let url = `${WS_BASE_URL}?token=${encodeURIComponent(token)}`;
+    if (reporteId) {
+      url += `&reporte_id=${reporteId}`;
+    }
+
+    this.ws = new WebSocket(url);
+
+    this.ws.onopen = () => {
+      console.log('✅ WebSocket conectado');
+      this.reconnectAttempts = 0;
+      this.emit('connect', { reporteId: this.reporteId });
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('📨 Mensaje recibido:', data);
+
+        // Emitir evento según el tipo de mensaje
+        if (data.tipo) {
+          this.emit(data.tipo, data);
+        }
+        
+        // Emitir evento general
+        this.emit('message', data);
+      } catch (error) {
+        console.error('Error al procesar mensaje:', error);
+      }
+    };
+
+    this.ws.onerror = (error) => {
+      console.error('❌ Error WebSocket:', error);
+      this.emit('error', error);
+    };
+
+    this.ws.onclose = () => {
+      console.log('🔌 WebSocket desconectado');
+      this.emit('disconnect', {});
+      
+      // Intentar reconectar
+      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectAttempts++;
+        console.log(`Reintentando conexión (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+        setTimeout(() => this.conectar(this.reporteId), this.reconnectDelay);
+      }
+    };
+  }
+
+  // Desconectar
+  desconectar() {
+    if (this.ws) {
+      this.reconnectAttempts = this.maxReconnectAttempts; // Prevenir reconexión
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+
+  // Enviar mensaje
+  enviar(accion, datos = {}) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket no está conectado');
+    }
+
+    const mensaje = {
+      action: accion,
+      ...datos
+    };
+
+    this.ws.send(JSON.stringify(mensaje));
+  }
+
+  // Suscribirse a eventos
+  on(evento, callback) {
+    if (!this.listeners.has(evento)) {
+      this.listeners.set(evento, []);
+    }
+    this.listeners.get(evento).push(callback);
+  }
+
+  // Desuscribirse de eventos
+  off(evento, callback) {
+    if (this.listeners.has(evento)) {
+      const callbacks = this.listeners.get(evento);
+      const index = callbacks.indexOf(callback);
+      if (index > -1) {
+        callbacks.splice(index, 1);
+      }
+    }
+  }
+
+  // Emitir evento
+  emit(evento, data) {
+    if (this.listeners.has(evento)) {
+      this.listeners.get(evento).forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error(`Error en listener de ${evento}:`, error);
+        }
+      });
+    }
+  }
+
+  // Acciones específicas para trabajadores
+  enCamino(reporteId, trabajadorId, taskToken = null) {
+    this.enviar('enCamino', {
+      reporte_id: reporteId,
+      trabajador_id: trabajadorId,
+      task_token: taskToken
+    });
+  }
+
+  trabajadorLlego(reporteId, trabajadorId, taskToken = null) {
+    this.enviar('trabajadorLlego', {
+      reporte_id: reporteId,
+      trabajador_id: trabajadorId,
+      task_token: taskToken
+    });
+  }
+
+  trabajoTerminado(reporteId, trabajadorId, taskToken = null) {
+    this.enviar('trabajoTerminado', {
+      reporte_id: reporteId,
+      trabajador_id: trabajadorId,
+      task_token: taskToken
+    });
+  }
+}
+
+// Exportar instancia única
+const wsService = new WebSocketService();
+export default wsService;
+```
+
+### 📱 Ejemplos de Uso por Pantalla
+
+#### Pantalla de Login
+
+```javascript
+import authService from './services/auth.service.js';
+
+// En tu componente de login
+async function handleLogin(email, password) {
+  try {
+    const data = await authService.login(email, password);
+    
+    console.log('Login exitoso:', data.usuario);
+    
+    // Redirigir según el rol
+    switch (data.usuario.rol) {
+      case 'estudiante':
+        window.location.href = '/estudiante/dashboard';
+        break;
+      case 'administrativo':
+        window.location.href = '/admin/dashboard';
+        break;
+      case 'trabajador':
+        window.location.href = '/trabajador/dashboard';
+        break;
+    }
+  } catch (error) {
+    console.error('Error en login:', error.message);
+    alert(error.message);
+  }
+}
+```
+
+#### Pantalla de Estudiante - Crear Reporte
+
+```javascript
+import reportesService from './services/reportes.service.js';
+import wsService from './services/websocket.service.js';
+
+async function crearReporte(formData) {
+  try {
+    // 1. Crear el reporte
+    const reporte = await reportesService.crear({
+      tipo: formData.tipo,
+      ubicacion: formData.ubicacion,
+      descripcion: formData.descripcion,
+      nivel_urgencia: formData.nivel_urgencia
+    });
+
+    console.log('Reporte creado:', reporte);
+
+    // 2. Conectar al WebSocket para recibir actualizaciones
+    wsService.conectar(reporte.reporte.reporte_id);
+
+    // 3. Escuchar actualizaciones de estado
+    wsService.on('actualizacion_estado', (data) => {
+      console.log('Estado actualizado:', data.estado);
+      
+      // Actualizar UI
+      actualizarEstadoEnPantalla(data);
+      
+      // Mostrar notificación
+      if (data.estado === 'en_camino') {
+        mostrarNotificacion('🚗 El trabajador va en camino');
+      } else if (data.estado === 'trabajador_llego') {
+        mostrarNotificacion('✅ El trabajador ha llegado');
+      } else if (data.estado === 'trabajo_terminado') {
+        mostrarNotificacion('🎉 Trabajo completado');
+      }
+    });
+
+    return reporte;
+  } catch (error) {
+    console.error('Error al crear reporte:', error.message);
+    alert(error.message);
+  }
+}
+```
+
+#### Pantalla de Administrador - Dashboard
+
+```javascript
+import reportesService from './services/reportes.service.js';
+import wsService from './services/websocket.service.js';
+
+async function inicializarDashboard() {
+  try {
+    // 1. Cargar todos los reportes
+    const { reportes } = await reportesService.listar();
+    renderizarReportes(reportes);
+
+    // 2. Conectar WebSocket para monitorear TODOS los reportes (sin reporte_id)
+    wsService.conectar();
+
+    // 3. Escuchar actualizaciones en tiempo real
+    wsService.on('actualizacion_estado', (data) => {
+      console.log('Actualización de reporte:', data.reporte_id, data.estado);
+      
+      // Actualizar el reporte en la lista
+      actualizarReporteEnLista(data.reporte_id, {
+        estado: data.estado,
+        timestamp: data.timestamp
+      });
+    });
+
+  } catch (error) {
+    console.error('Error al inicializar dashboard:', error.message);
+  }
+}
+
+// Asignar trabajador a un reporte
+async function asignarTrabajador(reporteId, trabajadorId) {
+  try {
+    const resultado = await reportesService.asignar(reporteId, trabajadorId);
+    console.log('Trabajador asignado:', resultado);
+    
+    // Actualizar UI
+    mostrarNotificacion('Trabajador asignado exitosamente');
+    
+  } catch (error) {
+    console.error('Error al asignar trabajador:', error.message);
+    alert(error.message);
+  }
+}
+
+// Cerrar reporte
+async function cerrarReporte(reporteId, resolucion) {
+  try {
+    const resultado = await reportesService.cerrar(reporteId, resolucion);
+    console.log('Reporte cerrado:', resultado);
+    
+    // Actualizar UI
+    mostrarNotificacion('Reporte cerrado exitosamente');
+    
+  } catch (error) {
+    console.error('Error al cerrar reporte:', error.message);
+    alert(error.message);
+  }
+}
+```
+
+#### Pantalla de Trabajador - Actualizar Estado
+
+```javascript
+import reportesService from './services/reportes.service.js';
+import wsService from './services/websocket.service.js';
+
+async function inicializarPanelTrabajador(reporteId) {
+  try {
+    // 1. Obtener detalles del reporte asignado
+    const reporte = await reportesService.obtener(reporteId);
+    renderizarReporte(reporte);
+
+    // 2. Conectar WebSocket
+    wsService.conectar(reporteId);
+
+    // 3. Obtener datos del usuario para el trabajador_id
+    const user = authService.getUser();
+    const trabajadorId = user.usuario_id;
+
+    // 4. Configurar botones de acción
+    document.getElementById('btnEnCamino').onclick = async () => {
+      try {
+        wsService.enCamino(reporteId, trabajadorId);
+        mostrarNotificacion('Estado actualizado: En camino');
+      } catch (error) {
+        console.error('Error:', error.message);
+      }
+    };
+
+    document.getElementById('btnLlego').onclick = async () => {
+      try {
+        wsService.trabajadorLlego(reporteId, trabajadorId);
+        mostrarNotificacion('Estado actualizado: Llegó');
+      } catch (error) {
+        console.error('Error:', error.message);
+      }
+    };
+
+    document.getElementById('btnTerminado').onclick = async () => {
+      try {
+        wsService.trabajoTerminado(reporteId, trabajadorId);
+        mostrarNotificacion('Estado actualizado: Trabajo terminado');
+      } catch (error) {
+        console.error('Error:', error.message);
+      }
+    };
+
+  } catch (error) {
+    console.error('Error al inicializar panel:', error.message);
+  }
+}
+```
+
+### 🎯 Mejores Prácticas
+
+1. **Manejo de Errores**:
+   - Siempre envolver llamadas en try-catch
+   - Mostrar mensajes claros al usuario
+   - Manejar sesiones expiradas (401) redirigiendo al login
+
+2. **WebSocket**:
+   - Implementar reconexión automática
+   - Limpiar conexiones al salir de la pantalla
+   - Validar que el WebSocket esté abierto antes de enviar
+
+3. **Seguridad**:
+   - Nunca exponer el token en consola o logs en producción
+   - Implementar refresh token si es necesario
+   - Validar permisos en el frontend (aunque el backend también lo hace)
+
+4. **Performance**:
+   - Cachear listados de reportes
+   - Usar debounce para búsquedas
+   - Desconectar WebSocket cuando no se necesite
 
 ---
 
@@ -416,7 +1118,7 @@ async function asignarReporte(reporteId, trabajadorId) {
 
 ### Base URL
 ```
-https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev
+https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev
 ```
 
 Todos los endpoints soportan **CORS** y devuelven JSON.
@@ -781,7 +1483,7 @@ async function obtenerReporteCompleto(reporteId) {
 
 ### URL Base
 ```
-wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev
+wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev
 ```
 
 ### Conexión con Autenticación
@@ -1626,6 +2328,288 @@ function ListaReportes() {
 
 ---
 
+## 🔬 Detalles Técnicos y Arquitectura de Notificaciones WebSocket
+
+### 📡 Cómo Funcionan las Notificaciones en Tiempo Real
+
+El sistema utiliza una arquitectura de **doble notificación** para garantizar que todos los clientes conectados reciban actualizaciones en tiempo real:
+
+#### Flujo de Notificación Completo
+
+```
+Trabajador actualiza estado (Ej: "En Camino")
+    ↓
+1️⃣ Handler WebSocket (enCamino.js) recibe la acción
+    ↓
+2️⃣ Se ejecutan estas acciones en paralelo:
+    │
+    ├─> Actualiza TablaEstados (registro de estado)
+    │
+    ├─> Actualiza TablaHistorial (auditoría)
+    │
+    └─> Consulta TablaConexiones para encontrar clientes conectados
+            ↓
+        Envía notificación WebSocket directamente a:
+            • Cliente Estudiante (si monitorea ese reporte específico)
+            • Clientes Administradores (monitoreando todos los reportes)
+            • Cliente Trabajador (confirmación de acción)
+    ↓
+3️⃣ DynamoDB Stream detecta cambio en TablaEstados
+    ↓
+4️⃣ Trigger de notificarCambioEstado.js (Lambda)
+    │
+    └─> ⚠️ Este Lambda FALLA con error 403 (sin permisos)
+        └─> ✅ ESTO ES ESPERADO Y NO AFECTA AL FUNCIONAMIENTO
+```
+
+#### ¿Por Qué Hay Dos Mecanismos?
+
+1. **Notificación Directa (handlers WebSocket)**:
+   - ✅ **Funciona perfectamente**
+   - ✅ Tiene permisos `execute-api:ManageConnections` automáticos
+   - ✅ Es **instantánea** (milisegundos)
+   - ✅ Notifica a todos los clientes relevantes
+
+2. **Notificación por DynamoDB Stream (notificarCambioEstado)**:
+   - ❌ **Falla con error 403** (sin permisos en LabRole)
+   - ⚠️ **No es necesario** porque los handlers ya notificaron
+   - 💡 En producción con permisos completos, serviría como **backup**
+
+### 🎯 Estados de Notificación WebSocket
+
+Los clientes recibirán mensajes con el siguiente formato:
+
+```javascript
+{
+  "tipo": "actualizacion_estado",
+  "reporte_id": "9b1623da-2cdc-43f2-bed9-43ce319a2d2e",
+  "estado": "en_camino",  // Puede ser: en_camino, trabajador_llego, trabajo_terminado
+  "timestamp": "2025-11-17T03:09:51.558Z",
+  "timestamp_notificacion": "2025-11-17T03:09:51.689Z"
+}
+```
+
+### 📊 Tabla de Conexiones (TablaConexiones)
+
+Cada conexión WebSocket se registra en DynamoDB:
+
+```javascript
+{
+  "connection_id": "UKt5NfwAoAMCLEA=",  // ID único de la conexión
+  "usuario_id": "test-user-001",       // Del token JWT
+  "rol": "estudiante",                  // Del token JWT
+  "reporte_id": "uuid-123" | "ALL",    // Reporte específico o todos
+  "timestamp": "2025-11-17T03:02:25Z",
+  "connected_at": "2025-11-17T03:02:25Z"
+}
+```
+
+**Tipos de monitoreo:**
+- `reporte_id = "uuid-específico"`: Solo recibe actualizaciones de ese reporte (Estudiante, Trabajador)
+- `reporte_id = "ALL"`: Recibe actualizaciones de TODOS los reportes (Administrador)
+
+### 🔐 Seguridad y Validación
+
+#### Validaciones en Handlers WebSocket
+
+1. **Token JWT Obligatorio**:
+   ```javascript
+   // El token se valida en CADA acción
+   const auth = await verifyJwtFromWebSocket(event);
+   // Contiene: { usuario_id, email, rol }
+   ```
+
+2. **Validación de Rol**:
+   ```javascript
+   // Solo trabajadores pueden actualizar estados
+   if (auth.rol !== 'trabajador') {
+     return error403('Solo trabajadores pueden actualizar estados');
+   }
+   ```
+
+3. **Validación de Identidad**:
+   ```javascript
+   // El trabajador_id del mensaje DEBE coincidir con el usuario_id del token
+   if (trabajador_id !== auth.usuario_id) {
+     return error403('El trabajador_id no coincide con el usuario autenticado');
+   }
+   ```
+
+### 🚨 Errores Comunes y Soluciones
+
+| Error | Causa | Solución |
+|-------|-------|----------|
+| **401 Unauthorized al conectar WS** | Token inválido o expirado | Renovar token con `/auth/login` |
+| **403 Forbidden en acción WS** | `trabajador_id` no coincide con token | Usar `usuario_id` del token como `trabajador_id` |
+| **Conexión WS se cierra inmediatamente** | Token no incluido en query string | Incluir `?token=<jwt>` al conectar |
+| **No recibo notificaciones** | `reporte_id` incorrecto o conexión inactiva | Verificar `reporte_id` y reconectar |
+| **Error 410 Gone** | Conexión WebSocket ya cerrada | Implementar reconexión automática |
+
+### 🎨 Patrones de Implementación Recomendados
+
+#### 1. Singleton para WebSocket
+
+```javascript
+// websocket.service.js
+class WebSocketService {
+  constructor() {
+    this.instance = null;
+  }
+
+  getInstance() {
+    if (!this.instance) {
+      this.instance = new WebSocket(/* ... */);
+    }
+    return this.instance;
+  }
+}
+```
+
+#### 2. Reconexión Automática
+
+```javascript
+class WebSocketWithReconnect {
+  connect() {
+    this.ws = new WebSocket(url);
+    
+    this.ws.onclose = () => {
+      if (this.reconnectAttempts < this.maxAttempts) {
+        setTimeout(() => this.connect(), this.delay);
+        this.reconnectAttempts++;
+      }
+    };
+  }
+}
+```
+
+#### 3. Limpieza de Recursos
+
+```javascript
+// En React
+useEffect(() => {
+  wsService.conectar(reporteId);
+  
+  return () => {
+    wsService.desconectar(); // Cleanup al desmontar
+  };
+}, [reporteId]);
+```
+
+### 📈 Métricas y Monitoreo
+
+#### CloudWatch Logs Relevantes
+
+1. **Handler WebSocket (enCamino, trabajadorLlego, trabajoTerminado)**:
+   ```bash
+   aws logs tail /aws/lambda/hackathon-utec-incidentes-dev-enCamino --follow
+   ```
+   - ✅ Debe mostrar: "Notificando a X clientes conectados"
+   - ✅ Debe mostrar: "Mensaje enviado a connection_id: XXX"
+
+2. **notificarCambioEstado** (opcional, falla sin permisos):
+   ```bash
+   aws logs tail /aws/lambda/hackathon-utec-incidentes-dev-notificarCambioEstado --follow
+   ```
+   - ⚠️ Mostrará error 403 (ESPERADO, no es problema)
+
+#### Verificar Conexiones Activas
+
+```bash
+# Ver conexiones en TablaConexiones
+aws dynamodb scan \
+  --table-name TablaConexiones-dev \
+  --region us-east-1
+```
+
+### 🧪 Testing y Validación
+
+#### Ejemplo de Testing Manual con wscat
+
+```bash
+# 1. Instalar wscat
+npm install -g wscat
+
+# 2. Conectar (reemplazar <TOKEN> con tu JWT)
+wscat -c "wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev?token=<TOKEN>&reporte_id=uuid-123"
+
+# 3. Enviar acción (reemplazar con tus datos reales)
+{
+  "action": "enCamino",
+  "reporte_id": "9b1623da-2cdc-43f2-bed9-43ce319a2d2e",
+  "trabajador_id": "fee32781-c4cf-4d6f-9b31-d78fc70f9765",
+  "task_token": null
+}
+
+# 4. Deberías recibir confirmación y notificación
+```
+
+### 🔄 Ciclo de Vida del WebSocket
+
+```
+1. Cliente abre conexión
+   └─> $connect handler se ejecuta
+       └─> Valida JWT
+       └─> Guarda connection_id en TablaConexiones
+
+2. Cliente envía mensajes
+   └─> Rutas específicas (enCamino, etc.)
+       └─> Validan JWT en cada mensaje
+       └─> Procesan acción
+       └─> Notifican a otros clientes
+
+3. Cliente cierra conexión
+   └─> $disconnect handler se ejecuta
+       └─> Elimina connection_id de TablaConexiones
+```
+
+### 💡 Tips y Mejores Prácticas
+
+1. **Siempre validar estado de conexión antes de enviar**:
+   ```javascript
+   if (ws.readyState === WebSocket.OPEN) {
+     ws.send(data);
+   }
+   ```
+
+2. **Implementar heartbeat/ping**:
+   ```javascript
+   setInterval(() => {
+     if (ws.readyState === WebSocket.OPEN) {
+       ws.send(JSON.stringify({ action: 'ping' }));
+     }
+   }, 30000); // Cada 30 segundos
+   ```
+
+3. **Manejar múltiples pestañas**:
+   ```javascript
+   // Usar BroadcastChannel para sincronizar entre tabs
+   const channel = new BroadcastChannel('websocket_updates');
+   channel.onmessage = (event) => {
+     // Actualizar UI desde otra pestaña
+   };
+   ```
+
+4. **Optimizar notificaciones**:
+   ```javascript
+   // Debounce para evitar múltiples actualizaciones rápidas
+   const debouncedUpdate = debounce((data) => {
+     actualizarUI(data);
+   }, 300);
+   ```
+
+### 🏆 Resumen de Flujos Probados y Funcionales
+
+✅ **Flujo Estudiante**:
+- Registra cuenta → Login → Crea reporte → Conecta WebSocket → Recibe actualizaciones
+
+✅ **Flujo Administrador**:
+- Login → Ve todos los reportes → Conecta WebSocket (sin reporte_id) → Recibe actualizaciones de TODOS
+
+✅ **Flujo Trabajador**:
+- Login → Conecta WebSocket → Envía "En Camino" → Otros reciben notificación → Envía "Llegó" → Envía "Terminado"
+
+---
+
 ## 🔄 Apache Airflow - Orquestación y Automatización
 
 ### ¿Qué es Airflow en este sistema?
@@ -1868,7 +2852,7 @@ Para probar los DAGs inmediatamente, necesitas crear reportes con fecha del día
 
 ```bash
 # Reporte 1: Seguridad - Alta
-curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+curl -X POST https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev/reportes \
   -H "Content-Type: application/json" \
   -d '{
     "usuario_id": "test-user-001",
@@ -1880,7 +2864,7 @@ curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes
   }'
 
 # Reporte 2: Mantenimiento - Media
-curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+curl -X POST https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev/reportes \
   -H "Content-Type: application/json" \
   -d '{
     "usuario_id": "test-user-002",
@@ -1892,7 +2876,7 @@ curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes
   }'
 
 # Reporte 3: Limpieza - Baja
-curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+curl -X POST https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev/reportes \
   -H "Content-Type: application/json" \
   -d '{
     "usuario_id": "test-user-003",
@@ -1904,7 +2888,7 @@ curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes
   }'
 
 # Reporte 4: Seguridad - Crítica
-curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+curl -X POST https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev/reportes \
   -H "Content-Type: application/json" \
   -d '{
     "usuario_id": "test-user-004",
@@ -1916,7 +2900,7 @@ curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes
   }'
 
 # Reporte 5: Mantenimiento - Alta
-curl -X POST https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev/reportes \
+curl -X POST https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev/reportes \
   -H "Content-Type: application/json" \
   -d '{
     "usuario_id": "test-user-005",
@@ -2914,8 +3898,8 @@ window.addEventListener('nuevaNotificacion', (event) => {
 
 ```javascript
 // 1. Configurar URLs
-const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
-const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
+const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
 
 // 2. Registrar usuario (solo una vez)
 const usuario = await registrarUsuario('usuario@example.com', 'password123', 'estudiante');
@@ -2952,8 +3936,8 @@ Esta sección contiene ejemplos completos y listos para usar de todos los flujos
 
 ```javascript
 // Configuración base - Copiar al inicio de tu aplicación
-const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
-const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
+const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
 
 // Helper para obtener token
 function getToken() {
@@ -2998,8 +3982,8 @@ Esta sección contiene ejemplos completos y listos para usar de todos los flujos
 
 ```javascript
 // Configuración base - Copiar al inicio de tu aplicación
-const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
-const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
+const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
 
 // Helper para obtener token
 function getToken() {
@@ -3603,8 +4587,8 @@ ws.send(JSON.stringify({
 (async function testCompleto() {
   try {
     // Configuración
-    const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
-    const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+    const API_BASE_URL = 'https://ovgixvti60.execute-api.us-east-1.amazonaws.com/dev';
+    const WS_BASE_URL = 'wss://vwomh5is13.execute-api.us-east-1.amazonaws.com/dev';
     
     function getToken() {
       return localStorage.getItem('token');
