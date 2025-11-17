@@ -1,13 +1,26 @@
 const { scan, putItem, getTimestamp } = require('../../shared/dynamodb');
 const { validateActualizarReporte, isValidUUID, createResponse } = require('../../shared/validations');
+const { verifyJwtFromEvent } = require('../../utils/auth');
 
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
 
+// Roles administrativos
+const ROLES_ADMINISTRATIVOS = new Set(['administrativo', 'autoridad']);
+
 async function handler(event) {
   try {
+    // Verificar autenticación JWT
+    const auth = verifyJwtFromEvent(event);
+    if (!auth) {
+      return createResponse(401, {
+        error: 'No autorizado',
+        mensaje: 'Token JWT inválido o faltante. Debe incluir: Authorization: Bearer <token>'
+      });
+    }
+
     const reporte_id = event.pathParameters?.reporte_id;
     
     if (!reporte_id || !isValidUUID(reporte_id)) {
@@ -30,6 +43,17 @@ async function handler(event) {
     }
     
     const reporteActual = reportes[0];
+
+    // Validar permisos: solo el dueño del reporte o un admin puede actualizarlo
+    const esDueño = reporteActual.usuario_id === auth.usuario_id;
+    const esAdmin = ROLES_ADMINISTRATIVOS.has(auth.rol);
+    
+    if (!esDueño && !esAdmin) {
+      return createResponse(403, {
+        error: 'Acceso denegado',
+        mensaje: 'Solo el dueño del reporte o usuarios administrativos pueden actualizarlo'
+      });
+    }
     
     const body = JSON.parse(event.body || '{}');
     
@@ -63,11 +87,11 @@ async function handler(event) {
         reporte_id,
         timestamp: fecha_actualizacion,
         tenant_id: TENANT_ID,
-        user_id: body.user_id || reporteActual.usuario_id,
+        user_id: auth.usuario_id, // Usar usuario_id del token
         estado: body.estado,
         detalles_estado: [{
           message: `Estado cambiado de ${reporteActual.estado} a ${body.estado}`,
-          actualizado_por: body.user_id || reporteActual.usuario_id,
+          actualizado_por: auth.usuario_id, // Usar usuario_id del token
           start_time: fecha_actualizacion,
           end_time: '',
           notes: body.notes || ''
@@ -82,8 +106,8 @@ async function handler(event) {
       reporte_id,
       timestamp_accion: fecha_actualizacion,
       accion: 'actualizar',
-      usuario_id: body.user_id || reporteActual.usuario_id,
-      rol: body.rol || 'estudiante',
+      usuario_id: auth.usuario_id, // Usar usuario_id del token
+      rol: auth.rol, // Usar rol del token
       entidad_afectada: 'reporte',
       detalles_antes: reporteActual,
       detalles_despues: reporteActualizado,

@@ -1,12 +1,17 @@
 const { scan, query } = require('../../shared/dynamodb');
 const { createResponse } = require('../../shared/validations');
+const { verifyJwtFromEvent } = require('../../utils/auth');
 
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
 
 async function handler(event) {
   try {
+    // Verificar autenticación JWT (opcional pero recomendado)
+    const auth = verifyJwtFromEvent(event);
+    
     const queryParams = event.queryStringParameters || {};
-    const usuario_id = queryParams.usuario_id;
+    // Si está autenticado y no especifica usuario_id, usar el del token
+    const usuario_id = queryParams.usuario_id || (auth ? auth.usuario_id : null);
     const estado = queryParams.estado;
     const tipo = queryParams.tipo;
     const nivel_urgencia = queryParams.nivel_urgencia;

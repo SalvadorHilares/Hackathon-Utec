@@ -13,6 +13,18 @@ const s3Client = new S3Client({ region: process.env.REGION || 'us-east-1' });
 
 async function handler(event) {
   try {
+    // Verificar autenticación JWT
+    const auth = verifyJwtFromWebSocket(event);
+    if (!auth) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          error: 'No autorizado',
+          mensaje: 'Token JWT inválido o faltante. Debe incluir: {"token": "<jwt_token>", ...}'
+        })
+      };
+    }
+
     const connectionId = event.requestContext.connectionId;
     const body = JSON.parse(event.body || '{}');
     const reporte_id = body.reporte_id;
@@ -24,6 +36,17 @@ async function handler(event) {
         statusCode: 400,
         body: JSON.stringify({
           error: 'reporte_id, trabajador_id y task_token son requeridos'
+        })
+      };
+    }
+
+    // Validar que el trabajador_id del body coincida con el usuario_id del token
+    if (trabajador_id !== auth.usuario_id) {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({
+          error: 'Acceso denegado',
+          mensaje: 'El trabajador_id no coincide con el usuario autenticado'
         })
       };
     }
@@ -75,11 +98,11 @@ async function handler(event) {
       reporte_id,
       timestamp: fecha_terminacion,
       tenant_id: TENANT_ID,
-      user_id: trabajador_id,
+      user_id: auth.usuario_id, // Usar usuario_id del token
       estado: 'resuelto',
       detalles_estado: [{
         message: 'Trabajo terminado por trabajador',
-        actualizado_por: trabajador_id,
+        actualizado_por: auth.usuario_id, // Usar usuario_id del token
         start_time: fecha_terminacion,
         end_time: '',
         notes: body.comentarios || 'Trabajo completado'
@@ -93,8 +116,8 @@ async function handler(event) {
       reporte_id,
       timestamp_accion: fecha_terminacion,
       accion: 'trabajo_terminado',
-      usuario_id: trabajador_id,
-      rol: 'trabajador',
+      usuario_id: auth.usuario_id, // Usar usuario_id del token
+      rol: auth.rol, // Usar rol del token
       entidad_afectada: 'trabajo',
       detalles_antes: { estado_trabajo: 'llegó' },
       detalles_despues: { estado_trabajo: 'terminado', fecha_terminacion },

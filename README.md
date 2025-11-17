@@ -7,18 +7,23 @@
 ## 📋 Tabla de Contenidos
 
 1. [Configuración Inicial](#configuración-inicial)
-2. [Arquitectura del Sistema](#arquitectura-del-sistema)
+2. [Autenticación y Autorización](#-autenticación-y-autorización)
+   - [Registro de Usuario](#registro-de-usuario)
+   - [Inicio de Sesión](#inicio-de-sesión)
+   - [Uso de Tokens JWT](#uso-de-tokens-jwt)
+   - [Roles y Permisos](#roles-y-permisos)
+3. [Arquitectura del Sistema](#arquitectura-del-sistema)
    - [Diagrama de Arquitectura General](#diagrama-de-arquitectura-general)
    - [Flujo Completo: Admin y Trabajador](#flujo-completo-admin-y-trabajador)
-3. [Endpoints REST API](#endpoints-rest-api)
-4. [WebSocket - Actualizaciones en Tiempo Real](#websocket---actualizaciones-en-tiempo-real)
-5. [Flujos Completos por Rol](#flujos-completos-por-rol)
-6. [Filtros y Búsqueda](#filtros-y-búsqueda)
-7. [Manejo de Errores](#manejo-de-errores)
-8. [Ejemplos de Código](#ejemplos-de-código)
-9. [Apache Airflow - Orquestación y Automatización](#-apache-airflow---orquestación-y-automatización)
+4. [Endpoints REST API](#endpoints-rest-api)
+5. [WebSocket - Actualizaciones en Tiempo Real](#websocket---actualizaciones-en-tiempo-real)
+6. [Flujos Completos por Rol](#flujos-completos-por-rol)
+7. [Filtros y Búsqueda](#filtros-y-búsqueda)
+8. [Manejo de Errores](#manejo-de-errores)
+9. [Ejemplos de Código](#ejemplos-de-código)
+10. [Apache Airflow - Orquestación y Automatización](#-apache-airflow---orquestación-y-automatización)
    - [Integración con el Sistema Serverless](#integración-con-el-sistema-serverless)
-10. [Notificaciones SNS](#-notificaciones-sns-simple-notification-service)
+11. [Notificaciones SNS](#-notificaciones-sns-simple-notification-service)
 
 ---
 
@@ -47,10 +52,10 @@ La siguiente imagen muestra la arquitectura completa del sistema con los microse
 ![Arquitectura General del Sistema](Hackathon-Página-1.drawio.png)
 
 **Componentes principales:**
-- **Microservicio de Usuarios**: Maneja registro y autenticación (excluido en esta implementación)
+- **Microservicio de Usuarios**: Maneja registro y autenticación con JWT
 - **Microservicio de Estado**: Gestiona conexiones WebSocket y estados en tiempo real
 - **Microservicio de Reporte**: Procesa creación, actualización y gestión de reportes
-- **Flujo de Validación de Seguridad**: Valida tokens JWT y políticas (excluido en esta implementación)
+- **Flujo de Validación de Seguridad**: Valida tokens JWT y políticas de acceso basadas en roles
 
 ### Componentes Principales
 
@@ -113,11 +118,297 @@ La siguiente imagen detalla el flujo completo del sistema incluyendo:
 
 | Tabla | Propósito | Clave Principal |
 |-------|-----------|-----------------|
-| `TablaReportes` | Almacena todos los reportes | `reporte_id` |
+| `TablaUsuarios` | Almacena usuarios y credenciales | `usuario_id` |
+| `TablaReportes` | Almacena todos los reportes | `reporte_id` + `fecha_creacion` |
 | `TablaEstados` | Historial de estados de cada reporte | `reporte_id` + `timestamp` |
 | `TablaHistorial` | Auditoría de todas las acciones | `reporte_id` + `timestamp_accion` |
 | `TablaEstadoTrabajo` | Estado del trabajador asignado | `reporte_id` + `trabajador_id` |
 | `TablaConexiones` | Conexiones WebSocket activas | `connection_id` |
+
+---
+
+## 🔐 Autenticación y Autorización
+
+El sistema utiliza **JWT (JSON Web Tokens)** para autenticación. **TODOS** los endpoints (REST API y WebSocket) requieren un token JWT válido para acceder.
+
+### Seguridad Completa del Sistema
+
+✅ **Autenticación JWT implementada en:**
+- ✅ Todos los endpoints REST de reportes
+- ✅ Todas las conexiones WebSocket (cliente y trabajador)
+- ✅ Todas las operaciones de estado de trabajo
+- ✅ Validación de roles para operaciones administrativas
+- ✅ Validación de propiedad (solo el dueño puede modificar sus reportes)
+
+**Nota:** Los handlers internos (Step Functions, SNS) no requieren autenticación ya que son llamados por servicios AWS internos.
+
+### Registro de Usuario
+
+**POST** `/auth/register`
+
+Registra un nuevo usuario en el sistema.
+
+**Request Body:**
+```json
+{
+  "email": "usuario@example.com",
+  "password": "contraseña123",
+  "rol": "estudiante" | "administrativo" | "autoridad"
+}
+```
+
+**Validaciones:**
+- `email`: Debe ser un email válido (acepta cualquier dominio: @gmail.com, @utec.edu.pe, etc.)
+- `password`: Requerido
+- `rol`: Debe ser uno de: `estudiante`, `administrativo`, `autoridad`
+
+**Response (201):**
+```json
+{
+  "usuario_id": "uuid-generado",
+  "email": "usuario@example.com",
+  "rol": "estudiante",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+**Response (400):** Si el email ya está registrado o datos inválidos
+```json
+{
+  "message": "Usuario ya registrado"
+}
+```
+
+**Ejemplo JavaScript:**
+```javascript
+async function registrarUsuario(email, password, rol) {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email, password, rol })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Error al registrar usuario');
+  }
+  
+  return await response.json();
+}
+
+// Uso
+const nuevoUsuario = await registrarUsuario(
+  'usuario@example.com',
+  'miPassword123',
+  'estudiante'
+);
+```
+
+---
+
+### Inicio de Sesión
+
+**POST** `/auth/login`
+
+Autentica un usuario y retorna un token JWT.
+
+**Request Body:**
+```json
+{
+  "email": "usuario@example.com",
+  "password": "contraseña123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "usuario": {
+    "usuario_id": "uuid-del-usuario",
+    "email": "usuario@example.com",
+    "rol": "estudiante"
+  }
+}
+```
+
+**Response (401):** Si las credenciales son inválidas
+```json
+{
+  "message": "Credenciales inválidas"
+}
+```
+
+**Ejemplo JavaScript:**
+```javascript
+async function loginUsuario(email, password) {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email, password })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Error al iniciar sesión');
+  }
+  
+  const data = await response.json();
+  
+  // Guardar token en localStorage o estado de la aplicación
+  localStorage.setItem('token', data.token);
+  localStorage.setItem('usuario', JSON.stringify(data.usuario));
+  
+  return data;
+}
+
+// Uso
+const authData = await loginUsuario('usuario@example.com', 'miPassword123');
+console.log('Token:', authData.token);
+console.log('Usuario:', authData.usuario);
+```
+
+---
+
+### Uso de Tokens JWT
+
+**Todos los endpoints de reportes requieren autenticación JWT.**
+
+El token debe incluirse en el header `Authorization` con el formato:
+```
+Authorization: Bearer <token>
+```
+
+**Duración del Token:**
+- Los tokens JWT expiran después de **4 horas**
+- Después de la expiración, el usuario debe iniciar sesión nuevamente
+
+**Ejemplo de uso en todas las peticiones:**
+```javascript
+// Función helper para obtener el token
+function getAuthToken() {
+  return localStorage.getItem('token');
+}
+
+// Función helper para hacer peticiones autenticadas
+async function fetchAutenticado(url, options = {}) {
+  const token = getAuthToken();
+  
+  if (!token) {
+    throw new Error('No hay token de autenticación. Por favor inicia sesión.');
+  }
+  
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...options.headers
+  };
+  
+  const response = await fetch(url, {
+    ...options,
+    headers
+  });
+  
+  // Si el token expiró (401), redirigir al login
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario');
+    window.location.href = '/login';
+    throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+  }
+  
+  return response;
+}
+
+// Uso en crear reporte
+async function crearReporte(datos) {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes`, {
+    method: 'POST',
+    body: JSON.stringify(datos)
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al crear reporte');
+  }
+  
+  return await response.json();
+}
+```
+
+---
+
+### Roles y Permisos
+
+El sistema tiene tres roles con diferentes permisos:
+
+| Rol | Descripción | Permisos |
+|-----|-------------|----------|
+| `estudiante` | Usuario regular | - Crear reportes<br>- Ver sus propios reportes<br>- Actualizar sus propios reportes |
+| `administrativo` | Personal administrativo | - Todos los permisos de estudiante<br>- Asignar reportes a trabajadores<br>- Cerrar reportes<br>- Ver todos los reportes |
+| `autoridad` | Autoridades institucionales | - Todos los permisos de administrativo<br>- Acceso completo al sistema |
+
+**Validación de Permisos:**
+
+1. **Crear Reporte** (`POST /reportes`):
+   - ✅ Requiere autenticación
+   - ✅ Cualquier rol puede crear reportes
+   - ℹ️ El `usuario_id` se obtiene automáticamente del token (no se envía en el body)
+
+2. **Actualizar Reporte** (`PUT /reportes/{reporte_id}`):
+   - ✅ Requiere autenticación
+   - ✅ Solo el dueño del reporte o un admin/autoridad puede actualizarlo
+
+3. **Asignar Reporte** (`POST /reportes/{reporte_id}/asignar`):
+   - ✅ Requiere autenticación
+   - ✅ Solo `administrativo` o `autoridad`
+
+4. **Cerrar Reporte** (`POST /reportes/{reporte_id}/cerrar`):
+   - ✅ Requiere autenticación
+   - ✅ Solo `administrativo` o `autoridad`
+
+5. **Listar Reportes** (`GET /reportes`):
+   - ⚠️ Autenticación opcional
+   - ℹ️ Si está autenticado, filtra automáticamente por su `usuario_id` si no se especifica otro
+
+6. **Obtener Historial** (`GET /reportes/{reporte_id}/historial`):
+   - ✅ Requiere autenticación
+   - ✅ Cualquier usuario autenticado puede ver el historial
+
+**Ejemplo de manejo de errores de permisos:**
+```javascript
+async function asignarReporte(reporteId, trabajadorId) {
+  try {
+    const response = await fetchAutenticado(
+      `${API_BASE_URL}/reportes/${reporteId}/asignar`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ trabajador_id: trabajadorId })
+      }
+    );
+    
+    if (response.status === 403) {
+      const error = await response.json();
+      throw new Error('No tienes permisos para asignar reportes. Se requiere rol administrativo.');
+    }
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Error al asignar reporte');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error:', error.message);
+    // Mostrar mensaje al usuario
+    alert(error.message);
+  }
+}
+```
 
 ---
 
@@ -136,19 +427,27 @@ Todos los endpoints soportan **CORS** y devuelven JSON.
 
 **POST** `/reportes`
 
+**⚠️ Requiere autenticación JWT** (ver sección [Autenticación y Autorización](#-autenticación-y-autorización))
+
+**Request Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
 **Request Body:**
 ```json
 {
-  "usuario_id": "user-123",
   "tipo": "seguridad" | "mantenimiento" | "limpieza" | "otro",
   "ubicacion": "Edificio A, Aula 201",
   "descripcion": "Descripción detallada del incidente",
   "nivel_urgencia": "baja" | "media" | "alta" | "critica",
-  "rol": "estudiante" | "personal" | "administrativo",
   "imagenes": ["url1", "url2"],  // Opcional
   "videos": ["url1"]              // Opcional
 }
 ```
+
+**Nota:** El `usuario_id` se obtiene automáticamente del token JWT. No es necesario enviarlo en el body.
 
 **Response (201):**
 ```json
@@ -162,12 +461,10 @@ Todos los endpoints soportan **CORS** y devuelven JSON.
 
 **Ejemplo JavaScript:**
 ```javascript
+// Usar la función fetchAutenticado definida en la sección de Autenticación
 async function crearReporte(datos) {
-  const response = await fetch(`${API_BASE_URL}/reportes`, {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
     body: JSON.stringify(datos)
   });
   
@@ -179,14 +476,12 @@ async function crearReporte(datos) {
   return await response.json();
 }
 
-// Uso
+// Uso (el usuario_id se obtiene automáticamente del token)
 const nuevoReporte = await crearReporte({
-  usuario_id: 'user-123',
   tipo: 'seguridad',
   ubicacion: 'Edificio A, Aula 201',
   descripcion: 'Puerta rota en el aula',
-  nivel_urgencia: 'alta',
-  rol: 'estudiante'
+  nivel_urgencia: 'alta'
 });
 ```
 
@@ -470,21 +765,33 @@ async function obtenerReporteCompleto(reporteId) {
 
 ## 🔌 WebSocket - Actualizaciones en Tiempo Real
 
+### ⚠️ Autenticación Requerida
+
+**TODAS las conexiones WebSocket requieren autenticación JWT.** El token debe incluirse en el query string durante la conexión.
+
 ### URL Base
 ```
 wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev
 ```
 
-### Conexión
+### Conexión con Autenticación
 
-**URL de Conexión:**
+**URL de Conexión (con token JWT):**
 ```javascript
+// Obtener token del localStorage o estado de la aplicación
+const token = localStorage.getItem('token');
+
 // Monitorear un reporte específico
-const wsUrl = `${WS_BASE_URL}?reporte_id=${reporteId}&usuario_id=${usuarioId}`;
+const wsUrl = `${WS_BASE_URL}?token=${token}&reporte_id=${reporteId}`;
 
 // Monitorear TODOS los reportes (Panel Admin)
-const wsUrl = `${WS_BASE_URL}?usuario_id=${usuarioId}`;
+const wsUrl = `${WS_BASE_URL}?token=${token}`;
 ```
+
+**⚠️ Importante:**
+- El `token` es **obligatorio** en el query string
+- El `usuario_id` se obtiene automáticamente del token (no es necesario enviarlo)
+- Si el token es inválido o expiró, la conexión será rechazada con status 401
 
 **Eventos WebSocket:**
 - `$connect`: Se ejecuta automáticamente al conectar
@@ -498,28 +805,30 @@ const wsUrl = `${WS_BASE_URL}?usuario_id=${usuarioId}`;
 **Ejemplo JavaScript Vanilla:**
 ```javascript
 class WebSocketManager {
-  constructor(reporteId = null, usuarioId = null) {
+  constructor(reporteId = null, token = null) {
     this.reporteId = reporteId;
-    this.usuarioId = usuarioId;
+    this.token = token || localStorage.getItem('token');
     this.ws = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
+    
+    if (!this.token) {
+      throw new Error('Token JWT requerido para conectar WebSocket');
+    }
   }
 
   connect() {
     let url = `${WS_BASE_URL}`;
     const params = [];
     
+    // Token es obligatorio
+    params.push(`token=${encodeURIComponent(this.token)}`);
+    
     if (this.reporteId) {
       params.push(`reporte_id=${this.reporteId}`);
     }
-    if (this.usuarioId) {
-      params.push(`usuario_id=${this.usuarioId}`);
-    }
     
-    if (params.length > 0) {
-      url += `?${params.join('&')}`;
-    }
+    url += `?${params.join('&')}`;
 
     this.ws = new WebSocket(url);
 
@@ -567,12 +876,13 @@ class WebSocketManager {
     }
   }
 
-  // Solicitar estados de un reporte
+  // Solicitar estados de un reporte (incluir token en el body)
   obtenerEstados(reporteId) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         action: 'obtenerEstados',
-        reporte_id: reporteId
+        reporte_id: reporteId,
+        token: this.token // Incluir token en el body del mensaje
       }));
     }
   }
@@ -602,7 +912,8 @@ class WebSocketManager {
 }
 
 // Uso
-const wsManager = new WebSocketManager(null, 'user-123'); // Monitorear todos
+const token = localStorage.getItem('token');
+const wsManager = new WebSocketManager(null, token); // Monitorear todos (null = todos los reportes)
 wsManager.onEstadoUpdate = (data) => {
   console.log('Estado actualizado:', data);
   // Actualizar UI: actualizar solo el reporte específico
@@ -675,14 +986,20 @@ Cuando cambia el estado de un reporte, **automáticamente** recibirás:
 
 ### 4. WebSocket para Trabajadores
 
+**⚠️ IMPORTANTE:** Los trabajadores también requieren autenticación JWT. El token debe incluirse en cada mensaje.
+
 Los trabajadores usan rutas específicas para actualizar su estado:
 
 **Ruta: `enCamino`**
 ```javascript
+// Obtener token del localStorage
+const token = localStorage.getItem('token');
+
 ws.send(JSON.stringify({
   action: 'enCamino',
+  token: token, // ⚠️ Token JWT requerido
   reporte_id: 'uuid',
-  trabajador_id: 'trabajador-001',
+  trabajador_id: 'trabajador-001', // Debe coincidir con usuario_id del token
   task_token: 'token-del-step-functions',
   ubicacion_trabajador: {
     latitud: -12.0464,
@@ -693,25 +1010,36 @@ ws.send(JSON.stringify({
 
 **Ruta: `trabajadorLlego`**
 ```javascript
+const token = localStorage.getItem('token');
+
 ws.send(JSON.stringify({
   action: 'trabajadorLlego',
+  token: token, // ⚠️ Token JWT requerido
   reporte_id: 'uuid',
-  trabajador_id: 'trabajador-001',
+  trabajador_id: 'trabajador-001', // Debe coincidir con usuario_id del token
   task_token: 'token-del-step-functions'
 }));
 ```
 
 **Ruta: `trabajoTerminado`**
 ```javascript
+const token = localStorage.getItem('token');
+
 ws.send(JSON.stringify({
   action: 'trabajoTerminado',
+  token: token, // ⚠️ Token JWT requerido
   reporte_id: 'uuid',
-  trabajador_id: 'trabajador-001',
+  trabajador_id: 'trabajador-001', // Debe coincidir con usuario_id del token
   task_token: 'token-del-step-functions',
   comentarios: 'Trabajo completado exitosamente',
   imagenes_finales: ['url1', 'url2']
 }));
 ```
+
+**Validaciones de Seguridad:**
+- ✅ El token JWT es validado en cada mensaje
+- ✅ El `trabajador_id` del body debe coincidir con el `usuario_id` del token
+- ✅ Si no coinciden, se retorna error 403 (Acceso denegado)
 
 ---
 
@@ -721,14 +1049,13 @@ ws.send(JSON.stringify({
 
 #### 1. Crear Reporte
 ```javascript
-// 1. Usuario crea un reporte
+// 1. Usuario crea un reporte (usuario_id se obtiene del token automáticamente)
 const reporte = await crearReporte({
-  usuario_id: 'user-123',
   tipo: 'mantenimiento',
   ubicacion: 'Edificio B, Baño 2do piso',
   descripcion: 'Grifo roto, gotea constantemente',
-  nivel_urgencia: 'media',
-  rol: 'estudiante'
+  nivel_urgencia: 'media'
+  // usuario_id y rol se obtienen del token JWT automáticamente
 });
 
 console.log('Reporte creado:', reporte.reporte_id);
@@ -736,8 +1063,9 @@ console.log('Reporte creado:', reporte.reporte_id);
 
 #### 2. Conectar WebSocket para Monitorear
 ```javascript
-// 2. Conectar WebSocket para recibir actualizaciones
-const wsManager = new WebSocketManager(reporte.reporte_id, 'user-123');
+// 2. Conectar WebSocket para recibir actualizaciones (token se obtiene automáticamente)
+const token = localStorage.getItem('token');
+const wsManager = new WebSocketManager(reporte.reporte_id, token);
 
 wsManager.onEstadoUpdate = (data) => {
   // Actualizar UI cuando cambie el estado
@@ -752,10 +1080,9 @@ wsManager.connect();
 
 #### 3. Ver Mis Reportes
 ```javascript
-// 3. Listar mis reportes
-const misReportes = await listarReportes({
-  usuario_id: 'user-123'
-});
+// 3. Listar mis reportes (si estás autenticado, filtra automáticamente por tu usuario_id)
+const misReportes = await listarReportes({});
+// Si no especificas usuario_id y estás autenticado, filtra por tu usuario_id del token
 
 // Mostrar en lista
 misReportes.reportes.forEach(reporte => {
@@ -797,7 +1124,8 @@ mostrarReportesEnTabla(reportesPendientes.reportes);
 #### 2. Conectar WebSocket para Actualizaciones en Tiempo Real
 ```javascript
 // 2. Conectar WebSocket para TODOS los reportes
-const wsManager = new WebSocketManager(null, 'admin-001'); // null = todos
+const token = localStorage.getItem('token');
+const wsManager = new WebSocketManager(null, token); // null = todos los reportes
 
 wsManager.onEstadoUpdate = (data) => {
   // Actualizar SOLO el reporte que cambió en la lista
@@ -870,15 +1198,14 @@ async function asignarTrabajador(reporteId, trabajadorId) {
 
 #### 5. Cerrar Reporte
 ```javascript
-// 5. Cerrar un reporte
-async function cerrarReporte(reporteId) {
-  const resultado = await fetch(`${API_BASE_URL}/reportes/${reporteId}/cerrar`, {
+// 5. Cerrar un reporte (solo admin/autoridad)
+async function cerrarReporte(reporteId, notes = '') {
+  const token = localStorage.getItem('token');
+  const resultado = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/cerrar`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      user_id: 'admin-001',
-      rol: 'administrativo',
-      notes: 'Reporte resuelto completamente'
+      notes: notes || 'Reporte resuelto completamente'
+      // user_id y rol se obtienen del token automáticamente
     })
   });
   
@@ -894,8 +1221,9 @@ async function cerrarReporte(reporteId) {
 
 #### 1. Conectar WebSocket
 ```javascript
-// 1. Trabajador se conecta
-const ws = new WebSocket(`${WS_BASE_URL}?usuario_id=trabajador-001`);
+// 1. Trabajador se conecta (requiere token JWT)
+const token = localStorage.getItem('token');
+const ws = new WebSocket(`${WS_BASE_URL}?token=${encodeURIComponent(token)}`);
 ```
 
 #### 2. Recibir Asignación (vía SNS o polling)
@@ -914,12 +1242,14 @@ if (reporte.reporte.trabajador_asignado === 'trabajador-001') {
 
 #### 3. Actualizar Estado: En Camino
 ```javascript
-// 3. Trabajador indica que está en camino
+// 3. Trabajador indica que está en camino (incluir token JWT)
 function marcarEnCamino(reporteId, taskToken, ubicacion) {
+  const token = localStorage.getItem('token');
   ws.send(JSON.stringify({
     action: 'enCamino',
+    token: token, // ⚠️ Token JWT requerido
     reporte_id: reporteId,
-    trabajador_id: 'trabajador-001',
+    trabajador_id: 'trabajador-001', // Debe coincidir con usuario_id del token
     task_token: taskToken,
     ubicacion_trabajador: {
       latitud: ubicacion.lat,
@@ -931,12 +1261,14 @@ function marcarEnCamino(reporteId, taskToken, ubicacion) {
 
 #### 4. Actualizar Estado: Llegó
 ```javascript
-// 4. Trabajador indica que llegó
+// 4. Trabajador indica que llegó (incluir token JWT)
 function marcarLlego(reporteId, taskToken) {
+  const token = localStorage.getItem('token');
   ws.send(JSON.stringify({
     action: 'trabajadorLlego',
+    token: token, // ⚠️ Token JWT requerido
     reporte_id: reporteId,
-    trabajador_id: 'trabajador-001',
+    trabajador_id: 'trabajador-001', // Debe coincidir con usuario_id del token
     task_token: taskToken
   }));
 }
@@ -944,12 +1276,14 @@ function marcarLlego(reporteId, taskToken) {
 
 #### 5. Actualizar Estado: Trabajo Terminado
 ```javascript
-// 5. Trabajador marca trabajo como terminado
+// 5. Trabajador marca trabajo como terminado (incluir token JWT)
 function marcarTerminado(reporteId, taskToken, comentarios, imagenes) {
+  const token = localStorage.getItem('token');
   ws.send(JSON.stringify({
     action: 'trabajoTerminado',
+    token: token, // ⚠️ Token JWT requerido
     reporte_id: reporteId,
-    trabajador_id: 'trabajador-001',
+    trabajador_id: 'trabajador-001', // Debe coincidir con usuario_id del token
     task_token: taskToken,
     comentarios: comentarios,
     imagenes_finales: imagenes
@@ -2389,16 +2723,19 @@ const notificacionesReporte = notificaciones.filter(n =>
 
 ```javascript
 class SistemaNotificaciones {
-  constructor(usuarioId, rol) {
-    this.usuarioId = usuarioId;
-    this.rol = rol;
+  constructor(token = null) {
+    this.token = token || localStorage.getItem('token');
     this.notificaciones = [];
     this.wsManager = null;
+    
+    if (!this.token) {
+      throw new Error('Token JWT requerido');
+    }
   }
 
   iniciar() {
     // Conectar WebSocket (recibe actualizaciones que incluyen notificaciones SNS)
-    this.wsManager = new WebSocketManager(null, this.usuarioId);
+    this.wsManager = new WebSocketManager(null, this.token);
     
     this.wsManager.onEstadoUpdate = (data) => {
       this.procesarActualizacion(data);

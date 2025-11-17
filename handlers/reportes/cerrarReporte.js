@@ -1,13 +1,34 @@
 const { scan, putItem, getTimestamp } = require('../../shared/dynamodb');
 const { isValidUUID, createResponse } = require('../../shared/validations');
+const { verifyJwtFromEvent } = require('../../utils/auth');
 
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
 
+// Roles permitidos para cerrar reportes
+const ROLES_ADMINISTRATIVOS = new Set(['administrativo', 'autoridad']);
+
 async function handler(event) {
   try {
+    // Verificar autenticación JWT
+    const auth = verifyJwtFromEvent(event);
+    if (!auth) {
+      return createResponse(401, {
+        error: 'No autorizado',
+        mensaje: 'Token JWT inválido o faltante. Debe incluir: Authorization: Bearer <token>'
+      });
+    }
+
+    // Validar que el usuario tenga rol administrativo
+    if (!ROLES_ADMINISTRATIVOS.has(auth.rol)) {
+      return createResponse(403, {
+        error: 'Acceso denegado',
+        mensaje: 'Solo usuarios con rol administrativo o autoridad pueden cerrar reportes'
+      });
+    }
+
     const reporte_id = event.pathParameters?.reporte_id;
     
     if (!reporte_id || !isValidUUID(reporte_id)) {
@@ -51,11 +72,11 @@ async function handler(event) {
       reporte_id,
       timestamp: fecha_actualizacion,
       tenant_id: TENANT_ID,
-      user_id: body.user_id || reporte.usuario_id,
+      user_id: auth.usuario_id, // Usar usuario_id del token
       estado: 'resuelto',
       detalles_estado: [{
         message: 'Reporte cerrado/resuelto',
-        actualizado_por: body.user_id || reporte.usuario_id,
+        actualizado_por: auth.usuario_id, // Usar usuario_id del token
         start_time: fecha_actualizacion,
         end_time: '',
         notes: body.notes || 'Reporte cerrado por administrador'
@@ -69,8 +90,8 @@ async function handler(event) {
       reporte_id,
       timestamp_accion: fecha_actualizacion,
       accion: 'cerrar',
-      usuario_id: body.user_id || reporte.usuario_id,
-      rol: body.rol || 'administrativo',
+      usuario_id: auth.usuario_id, // Usar usuario_id del token
+      rol: auth.rol, // Usar rol del token
       entidad_afectada: 'reporte',
       detalles_antes: { estado: reporte.estado },
       detalles_despues: { estado: 'resuelto' },

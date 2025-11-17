@@ -2,6 +2,7 @@ const { getItem, putItem, generateUUID, getTimestamp } = require('../../shared/d
 const { validateCrearReporte, createResponse } = require('../../shared/validations');
 const { startExecution } = require('../../shared/stepfunctions');
 const { sendNotification } = require('../../shared/sns');
+const { verifyJwtFromEvent } = require('../../utils/auth');
 
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
@@ -12,6 +13,15 @@ const TENANT_ID = process.env.TENANT_ID || 'utec';
 
 async function handler(event) {
   try {
+    // Verificar autenticación JWT
+    const auth = verifyJwtFromEvent(event);
+    if (!auth) {
+      return createResponse(401, {
+        error: 'No autorizado',
+        mensaje: 'Token JWT inválido o faltante. Debe incluir: Authorization: Bearer <token>'
+      });
+    }
+
     const body = JSON.parse(event.body || '{}');
     
     // Validar datos
@@ -28,11 +38,11 @@ async function handler(event) {
     const fecha_creacion = getTimestamp();
     const fecha_actualizacion = fecha_creacion;
     
-    // Crear reporte
+    // Crear reporte (usar usuario_id del token JWT, no del body)
     const reporte = {
       reporte_id,
       fecha_creacion,
-      usuario_id: body.usuario_id,
+      usuario_id: auth.usuario_id, // Usar usuario_id del token autenticado
       tipo: body.tipo,
       ubicacion: body.ubicacion,
       descripcion: body.descripcion,
@@ -51,11 +61,11 @@ async function handler(event) {
       reporte_id,
       timestamp: fecha_creacion,
       tenant_id: TENANT_ID,
-      user_id: body.usuario_id,
+      user_id: auth.usuario_id, // Usar usuario_id del token
       estado: 'pendiente',
       detalles_estado: [{
         message: 'Reporte creado',
-        actualizado_por: body.usuario_id,
+        actualizado_por: auth.usuario_id, // Usar usuario_id del token
         start_time: fecha_creacion,
         end_time: '',
         notes: 'Estado inicial del reporte'
@@ -69,8 +79,8 @@ async function handler(event) {
       reporte_id,
       timestamp_accion: fecha_creacion,
       accion: 'crear',
-      usuario_id: body.usuario_id,
-      rol: body.rol || 'estudiante',
+      usuario_id: auth.usuario_id, // Usar usuario_id del token
+      rol: auth.rol, // Usar rol del token
       entidad_afectada: 'reporte',
       detalles_antes: {},
       detalles_despues: reporte,

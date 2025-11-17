@@ -16,6 +16,28 @@ provider:
   stage: dev
 
 functions:
+  # Registro y Autenticación de Usuarios
+  registrarUsuario:
+    handler: handlers/auth/registrarUsuario.handler
+    events:
+      - http:
+          path: auth/register
+          method: post
+          cors: true
+    environment:
+      TABLA_USUARIOS: ${self:custom.tablas.usuarios}
+
+  loginUsuario:
+    handler: handlers/auth/loginUsuario.handler
+    events:
+      - http:
+          path: auth/login
+          method: post
+          cors: true
+    environment:
+      TABLA_USUARIOS: ${self:custom.tablas.usuarios}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
+
   # Microservicio de Reportes - REST API
   crearReporte:
     handler: handlers/reportes/crearReporte.handler
@@ -30,6 +52,7 @@ functions:
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
       STEP_FUNCTIONS_NAME: ProcesarReporte-${self:provider.stage}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   actualizarReporte:
     handler: handlers/reportes/actualizarReporte.handler
@@ -42,6 +65,7 @@ functions:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   asignarReporte:
     handler: handlers/reportes/asignarReporte.handler
@@ -56,6 +80,7 @@ functions:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       SNS_TOPIC_ARN: ${self:custom.snsTopicArn}
       STEP_FUNCTIONS_NAME: ProcesarReporte-${self:provider.stage}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   visualizarReporte:
     handler: handlers/reportes/visualizarReporte.handler
@@ -67,6 +92,7 @@ functions:
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   obtenerReporteCompleto:
     handler: handlers/reportes/obtenerReporteCompleto.handler
@@ -80,6 +106,7 @@ functions:
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   cerrarReporte:
     handler: handlers/reportes/cerrarReporte.handler
@@ -92,6 +119,7 @@ functions:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   obtenerHistorial:
     handler: handlers/reportes/obtenerHistorial.handler
@@ -102,6 +130,7 @@ functions:
           cors: true
     environment:
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   listarReportes:
     handler: handlers/reportes/listarReportes.handler
@@ -112,6 +141,7 @@ functions:
           cors: true
     environment:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   # Microservicio de Estado - WebSocket Cliente
   conectarCliente:
@@ -122,6 +152,7 @@ functions:
     environment:
       TABLA_CONEXIONES: ${self:custom.tablas.conexiones}
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   desconectarCliente:
     handler: handlers/estado/desconectarCliente.handler
@@ -141,6 +172,7 @@ functions:
       TABLA_REPORTES: ${self:custom.tablas.reportes}
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       WEBSOCKET_API_ID: ${self:custom.websocketApiId}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   notificarCambioEstado:
     handler: handlers/estado/notificarCambioEstado.handler
@@ -172,6 +204,7 @@ functions:
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   trabajadorLlego:
     handler: handlers/estadoTrabajo/trabajadorLlego.handler
@@ -181,6 +214,7 @@ functions:
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   trabajoTerminado:
     handler: handlers/estadoTrabajo/trabajoTerminado.handler
@@ -192,6 +226,7 @@ functions:
       TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       S3_BUCKET: ${self:custom.s3Bucket}
+      TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
   # Lambdas de Soporte
   actualizarEstadoInicial:
@@ -225,6 +260,7 @@ functions:
 
 custom:
   tablas:
+    usuarios: TablaUsuarios-${self:provider.stage}
     reportes: TablaReportes-${self:provider.stage}
     estados: TablaEstados-${self:provider.stage}
     historial: TablaHistorial-${self:provider.stage}
@@ -242,6 +278,28 @@ custom:
 
 resources:
   Resources:
+    # Tabla Usuarios
+    TablaUsuarios:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tablas.usuarios}
+        AttributeDefinitions:
+          - AttributeName: usuario_id
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: usuario_id
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
     # Tabla Reportes
     TablaReportes:
       Type: AWS::DynamoDB::Table

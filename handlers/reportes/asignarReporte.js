@@ -2,6 +2,7 @@ const { scan, putItem, getTimestamp } = require('../../shared/dynamodb');
 const { isValidUUID, createResponse } = require('../../shared/validations');
 const { notifyWorker } = require('../../shared/sns');
 const { startExecution } = require('../../shared/stepfunctions');
+const { verifyJwtFromEvent } = require('../../utils/auth');
 
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
@@ -9,8 +10,28 @@ const TABLA_ESTADO_TRABAJO = process.env.TABLA_ESTADO_TRABAJO;
 const SNS_TOPIC_ARN = process.env.SNS_TOPIC_ARN;
 const STEP_FUNCTIONS_NAME = process.env.STEP_FUNCTIONS_NAME;
 
+// Roles permitidos para asignar reportes
+const ROLES_ADMINISTRATIVOS = new Set(['administrativo', 'autoridad']);
+
 async function handler(event) {
   try {
+    // Verificar autenticación JWT
+    const auth = verifyJwtFromEvent(event);
+    if (!auth) {
+      return createResponse(401, {
+        error: 'No autorizado',
+        mensaje: 'Token JWT inválido o faltante. Debe incluir: Authorization: Bearer <token>'
+      });
+    }
+
+    // Validar que el usuario tenga rol administrativo
+    if (!ROLES_ADMINISTRATIVOS.has(auth.rol)) {
+      return createResponse(403, {
+        error: 'Acceso denegado',
+        mensaje: 'Solo usuarios con rol administrativo o autoridad pueden asignar reportes'
+      });
+    }
+
     const reporte_id = event.pathParameters?.reporte_id;
     
     if (!reporte_id || !isValidUUID(reporte_id)) {
@@ -75,8 +96,8 @@ async function handler(event) {
       reporte_id,
       timestamp_accion: fecha_actualizacion,
       accion: 'asignar',
-      usuario_id: body.usuario_id || reporte.usuario_id,
-      rol: body.rol || 'administrativo',
+      usuario_id: auth.usuario_id, // Usar usuario_id del token
+      rol: auth.rol, // Usar rol del token
       entidad_afectada: 'trabajo',
       detalles_antes: { trabajador_asignado: '' },
       detalles_despues: { trabajador_asignado: trabajador_id },

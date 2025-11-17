@@ -1,5 +1,6 @@
 const { query, scan } = require('../../shared/dynamodb');
 const { sendMessage, getWebSocketEndpoint } = require('../../shared/websocket');
+const { verifyJwtFromWebSocket } = require('../../utils/auth');
 
 const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TABLA_REPORTES = process.env.TABLA_REPORTES;
@@ -10,6 +11,23 @@ const STAGE = process.env.STAGE || 'dev';
 
 async function handler(event) {
   try {
+    // Verificar autenticación JWT (token viene en el body: {"token": "...", ...})
+    const auth = verifyJwtFromWebSocket(event);
+    if (!auth) {
+      const requestContext = event.requestContext;
+      const endpoint = `https://${requestContext.domainName}/${requestContext.stage}`;
+      
+      await sendMessage(
+        endpoint,
+        event.requestContext.connectionId,
+        {
+          error: 'No autorizado',
+          mensaje: 'Token JWT inválido o faltante. Debe incluir: {"token": "<jwt_token>", ...}'
+        }
+      );
+      return { statusCode: 401 };
+    }
+
     const connectionId = event.requestContext.connectionId;
     const requestContext = event.requestContext;
     
@@ -25,7 +43,7 @@ async function handler(event) {
         connectionId,
         {
           error: 'reporte_id es requerido',
-          mensaje: 'Debes enviar: {"action": "obtenerEstados", "reporte_id": "tu-reporte-id"}'
+          mensaje: 'Debes enviar: {"action": "obtenerEstados", "reporte_id": "tu-reporte-id", "token": "<jwt_token>"}'
         }
       );
       return { statusCode: 200 };

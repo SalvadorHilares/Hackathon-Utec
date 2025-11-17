@@ -1,10 +1,20 @@
 const { query } = require('../../shared/dynamodb');
 const { isValidUUID, createResponse } = require('../../shared/validations');
+const { verifyJwtFromEvent } = require('../../utils/auth');
 
 const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
 
 async function handler(event) {
   try {
+    // Verificar autenticación JWT
+    const auth = verifyJwtFromEvent(event);
+    if (!auth) {
+      return createResponse(401, {
+        error: 'No autorizado',
+        mensaje: 'Token JWT inválido o faltante. Debe incluir: Authorization: Bearer <token>'
+      });
+    }
+
     const reporte_id = event.pathParameters?.reporte_id;
     
     if (!reporte_id || !isValidUUID(reporte_id)) {
