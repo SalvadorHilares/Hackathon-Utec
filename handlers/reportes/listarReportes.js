@@ -10,8 +10,26 @@ async function handler(event) {
     const auth = verifyJwtFromEvent(event);
     
     const queryParams = event.queryStringParameters || {};
-    // Si está autenticado y no especifica usuario_id, usar el del token
-    const usuario_id = queryParams.usuario_id || (auth ? auth.usuario_id : null);
+    
+    // LÓGICA DE PERMISOS:
+    // - Estudiante: Solo ve SUS propios reportes
+    // - Administrativo: Ve TODOS los reportes (para gestionar y asignar)
+    // - Trabajador: Ve reportes asignados a él (filtrado por trabajador_asignado)
+    
+    let usuario_id = queryParams.usuario_id;
+    let trabajador_asignado = queryParams.trabajador_asignado;
+    
+    if (auth) {
+      if (auth.rol === 'estudiante' && !usuario_id) {
+        // Estudiantes SOLO ven sus propios reportes
+        usuario_id = auth.usuario_id;
+      } else if (auth.rol === 'trabajador' && !trabajador_asignado && !usuario_id) {
+        // Trabajadores por defecto ven reportes asignados a ellos
+        trabajador_asignado = auth.usuario_id;
+      }
+      // Administrativo: NO aplica filtros automáticos, ve TODOS
+    }
+    
     const estado = queryParams.estado;
     const tipo = queryParams.tipo;
     const nivel_urgencia = queryParams.nivel_urgencia;
@@ -52,6 +70,12 @@ async function handler(event) {
         filters.push('#nivel_urgencia = :nivel_urgencia');
         expressionAttributeNames['#nivel_urgencia'] = 'nivel_urgencia';
         expressionAttributeValues[':nivel_urgencia'] = nivel_urgencia;
+      }
+      
+      if (trabajador_asignado) {
+        filters.push('#trabajador_asignado = :trabajador_asignado');
+        expressionAttributeNames['#trabajador_asignado'] = 'trabajador_asignado';
+        expressionAttributeValues[':trabajador_asignado'] = trabajador_asignado;
       }
       
       if (filters.length > 0) {
