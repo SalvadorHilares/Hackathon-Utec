@@ -8,13 +8,15 @@ const STAGE = process.env.STAGE || 'dev';
 
 async function handler(event) {
   try {
-    if (!WEBSOCKET_API_ID) {
-      console.error('WEBSOCKET_API_ID no está definido en las variables de entorno');
-      return { statusCode: 500 };
-    }
+    // Usar el ID real del WebSocket API (hardcodeado porque la referencia CloudFormation no se resuelve)
+    // El ID real del WebSocket es: vwomh5is13
+    const apiId = WEBSOCKET_API_ID && !WEBSOCKET_API_ID.includes('${') && !WEBSOCKET_API_ID.includes('Ref') 
+      ? WEBSOCKET_API_ID 
+      : 'vwomh5is13';
     
-    const endpoint = getWebSocketEndpoint(WEBSOCKET_API_ID, REGION, STAGE);
+    const endpoint = getWebSocketEndpoint(apiId, REGION, STAGE);
     console.log('Endpoint WebSocket:', endpoint);
+    console.log('API ID usado:', apiId);
     console.log('Event Records:', event.Records?.length || 0);
     
     // Procesar eventos de DynamoDB Stream

@@ -333,6 +333,11 @@
         
         function addMessage(panelId, message, type = 'received') {
             const panel = document.getElementById(panelId);
+            if (!panel) {
+                console.error(`Panel ${panelId} no encontrado`);
+                return;
+            }
+            
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
             
@@ -344,6 +349,9 @@
             
             panel.appendChild(messageDiv);
             panel.scrollTop = panel.scrollHeight;
+            
+            // Log en consola para depuración
+            console.log(`[${panelId}] ${type}:`, message);
         }
         
         function updateStatus(role, connected) {
@@ -374,15 +382,33 @@
                     addMessage('messages-estudiante', '✅ Conectado exitosamente', 'sent');
                     if (reporteId) {
                         addMessage('messages-estudiante', `📋 Monitoreando reporte: ${reporteId}`, 'sent');
+                        addMessage('messages-estudiante', `🔔 Esperando actualizaciones de estado para este reporte...`, 'sent');
                     } else {
                         addMessage('messages-estudiante', '📋 Monitoreando todos los reportes', 'sent');
+                        addMessage('messages-estudiante', `🔔 Esperando actualizaciones de estado de todos los reportes...`, 'sent');
                     }
                 };
                 
                 wsEstudiante.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
-                        addMessage('messages-estudiante', `📨 Recibido:\n${JSON.stringify(data, null, 2)}`, 'received');
+                        
+                        // Mostrar mensajes de actualización de estado de forma destacada
+                        if (data.tipo === 'actualizacion_estado') {
+                            addMessage('messages-estudiante', 
+                                `🔄 ACTUALIZACIÓN DE ESTADO\n` +
+                                `📋 Reporte: ${data.reporte_id}\n` +
+                                `📊 Estado: ${data.estado}\n` +
+                                `⏰ ${new Date(data.timestamp).toLocaleString()}\n` +
+                                `\n📄 Detalles:\n${JSON.stringify(data, null, 2)}`, 
+                                'received');
+                        } else if (data.tipo === 'respuesta_estados') {
+                            addMessage('messages-estudiante', 
+                                `📋 Estados del Reporte:\n${JSON.stringify(data, null, 2)}`, 
+                                'received');
+                        } else {
+                            addMessage('messages-estudiante', `📨 Recibido:\n${JSON.stringify(data, null, 2)}`, 'received');
+                        }
                     } catch (e) {
                         addMessage('messages-estudiante', `📨 Mensaje: ${event.data}`, 'received');
                     }
@@ -425,12 +451,29 @@
                     updateStatus('administrativo', true);
                     addMessage('messages-administrativo', '✅ Conectado exitosamente', 'sent');
                     addMessage('messages-administrativo', '📋 Monitoreando todos los reportes del sistema', 'sent');
+                    addMessage('messages-administrativo', `🔔 Esperando actualizaciones de estado de todos los reportes...`, 'sent');
                 };
                 
                 wsAdministrativo.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
-                        addMessage('messages-administrativo', `📨 Recibido:\n${JSON.stringify(data, null, 2)}`, 'received');
+                        
+                        // Mostrar mensajes de actualización de estado de forma destacada
+                        if (data.tipo === 'actualizacion_estado') {
+                            addMessage('messages-administrativo', 
+                                `🔄 ACTUALIZACIÓN DE ESTADO\n` +
+                                `📋 Reporte: ${data.reporte_id}\n` +
+                                `📊 Estado: ${data.estado}\n` +
+                                `⏰ ${new Date(data.timestamp).toLocaleString()}\n` +
+                                `\n📄 Detalles:\n${JSON.stringify(data, null, 2)}`, 
+                                'received');
+                        } else if (data.tipo === 'respuesta_estados') {
+                            addMessage('messages-administrativo', 
+                                `📋 Estados del Reporte:\n${JSON.stringify(data, null, 2)}`, 
+                                'received');
+                        } else {
+                            addMessage('messages-administrativo', `📨 Recibido:\n${JSON.stringify(data, null, 2)}`, 'received');
+                        }
                     } catch (e) {
                         addMessage('messages-administrativo', `📨 Mensaje: ${event.data}`, 'received');
                     }
