@@ -34,6 +34,17 @@ async function handler(event) {
       };
     }
 
+    // Validar que el usuario tenga rol trabajador
+    if (auth.rol !== 'trabajador') {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({
+          error: 'Acceso denegado',
+          mensaje: 'Solo usuarios con rol trabajador pueden actualizar estados de trabajo'
+        })
+      };
+    }
+
     // Validar que el trabajador_id del body coincida con el usuario_id del token
     if (trabajador_id !== auth.usuario_id) {
       return {

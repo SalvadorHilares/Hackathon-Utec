@@ -1,5 +1,6 @@
 const { getItem, putItem, getTimestamp } = require('../../shared/dynamodb');
 const { sendTaskSuccess } = require('../../shared/stepfunctions');
+const { verifyJwtFromWebSocket } = require('../../utils/auth');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const TABLA_ESTADO_TRABAJO = process.env.TABLA_ESTADO_TRABAJO;
@@ -36,6 +37,17 @@ async function handler(event) {
         statusCode: 400,
         body: JSON.stringify({
           error: 'reporte_id, trabajador_id y task_token son requeridos'
+        })
+      };
+    }
+
+    // Validar que el usuario tenga rol trabajador
+    if (auth.rol !== 'trabajador') {
+      return {
+        statusCode: 403,
+        body: JSON.stringify({
+          error: 'Acceso denegado',
+          mensaje: 'Solo usuarios con rol trabajador pueden actualizar estados de trabajo'
         })
       };
     }

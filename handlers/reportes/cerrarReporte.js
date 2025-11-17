@@ -8,7 +8,7 @@ const TABLA_HISTORIAL = process.env.TABLA_HISTORIAL;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
 
 // Roles permitidos para cerrar reportes
-const ROLES_ADMINISTRATIVOS = new Set(['administrativo', 'autoridad']);
+const ROLES_ADMINISTRATIVOS = new Set(['administrativo']);
 
 async function handler(event) {
   try {
@@ -25,7 +25,7 @@ async function handler(event) {
     if (!ROLES_ADMINISTRATIVOS.has(auth.rol)) {
       return createResponse(403, {
         error: 'Acceso denegado',
-        mensaje: 'Solo usuarios con rol administrativo o autoridad pueden cerrar reportes'
+        mensaje: 'Solo usuarios con rol administrativo pueden cerrar reportes'
       });
     }
 

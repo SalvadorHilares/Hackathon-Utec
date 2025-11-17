@@ -8,7 +8,7 @@ const TABLA_ESTADOS = process.env.TABLA_ESTADOS;
 const TENANT_ID = process.env.TENANT_ID || 'utec';
 
 // Roles administrativos
-const ROLES_ADMINISTRATIVOS = new Set(['administrativo', 'autoridad']);
+const ROLES_ADMINISTRATIVOS = new Set(['administrativo']);
 
 async function handler(event) {
   try {

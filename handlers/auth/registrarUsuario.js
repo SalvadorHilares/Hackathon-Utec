@@ -4,7 +4,7 @@ const crypto = require('crypto');
 
 const TABLE = process.env.TABLA_USUARIOS;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i; // Acepta cualquier email válido
-const ROLES_PERMITIDOS = new Set(['estudiante', 'administrativo', 'autoridad']);
+const ROLES_PERMITIDOS = new Set(['estudiante', 'administrativo', 'trabajador']);
 
 function hashPassword(password) {
   return crypto.createHash('sha256').update(password).digest('hex');

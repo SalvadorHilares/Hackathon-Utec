@@ -153,14 +153,14 @@ Registra un nuevo usuario en el sistema.
 {
   "email": "usuario@example.com",
   "password": "contraseña123",
-  "rol": "estudiante" | "administrativo" | "autoridad"
+  "rol": "estudiante" | "administrativo" | "trabajador"
 }
 ```
 
 **Validaciones:**
 - `email`: Debe ser un email válido (acepta cualquier dominio: @gmail.com, @utec.edu.pe, etc.)
 - `password`: Requerido
-- `rol`: Debe ser uno de: `estudiante`, `administrativo`, `autoridad`
+- `rol`: Debe ser uno de: `estudiante`, `administrativo`, `trabajador`
 
 **Response (201):**
 ```json
@@ -350,7 +350,7 @@ El sistema tiene tres roles con diferentes permisos:
 |-----|-------------|----------|
 | `estudiante` | Usuario regular | - Crear reportes<br>- Ver sus propios reportes<br>- Actualizar sus propios reportes |
 | `administrativo` | Personal administrativo | - Todos los permisos de estudiante<br>- Asignar reportes a trabajadores<br>- Cerrar reportes<br>- Ver todos los reportes |
-| `autoridad` | Autoridades institucionales | - Todos los permisos de administrativo<br>- Acceso completo al sistema |
+| `trabajador` | Personal de mantenimiento | - Actualizar estados de trabajo vía WebSocket<br>- Marcar trabajo como en camino, llegó, terminado |
 
 **Validación de Permisos:**
 
@@ -361,15 +361,15 @@ El sistema tiene tres roles con diferentes permisos:
 
 2. **Actualizar Reporte** (`PUT /reportes/{reporte_id}`):
    - ✅ Requiere autenticación
-   - ✅ Solo el dueño del reporte o un admin/autoridad puede actualizarlo
+   - ✅ Solo el dueño del reporte o un admin puede actualizarlo
 
 3. **Asignar Reporte** (`POST /reportes/{reporte_id}/asignar`):
    - ✅ Requiere autenticación
-   - ✅ Solo `administrativo` o `autoridad`
+   - ✅ Solo `administrativo`
 
 4. **Cerrar Reporte** (`POST /reportes/{reporte_id}/cerrar`):
    - ✅ Requiere autenticación
-   - ✅ Solo `administrativo` o `autoridad`
+   - ✅ Solo `administrativo`
 
 5. **Listar Reportes** (`GET /reportes`):
    - ⚠️ Autenticación opcional
@@ -1198,7 +1198,7 @@ async function asignarTrabajador(reporteId, trabajadorId) {
 
 #### 5. Cerrar Reporte
 ```javascript
-// 5. Cerrar un reporte (solo admin/autoridad)
+// 5. Cerrar un reporte (solo admin)
 async function cerrarReporte(reporteId, notes = '') {
   const token = localStorage.getItem('token');
   const resultado = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/cerrar`, {
