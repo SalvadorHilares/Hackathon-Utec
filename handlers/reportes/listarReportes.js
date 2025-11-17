@@ -12,22 +12,24 @@ async function handler(event) {
     const queryParams = event.queryStringParameters || {};
     
     // LÓGICA DE PERMISOS:
-    // - Estudiante: Solo ve SUS propios reportes
-    // - Administrativo: Ve TODOS los reportes (para gestionar y asignar)
-    // - Trabajador: Ve reportes asignados a él (filtrado por trabajador_asignado)
+    // - Estudiante: Solo ve SUS propios reportes (filtrado por usuario_id)
+    // - Administrativo: Ve TODOS los reportes (sin filtros automáticos)
+    // - Trabajador: Solo ve reportes ASIGNADOS a él (filtrado por trabajador_asignado)
     
     let usuario_id = queryParams.usuario_id;
     let trabajador_asignado = queryParams.trabajador_asignado;
     
     if (auth) {
-      if (auth.rol === 'estudiante' && !usuario_id) {
-        // Estudiantes SOLO ven sus propios reportes
+      if (auth.rol === 'estudiante') {
+        // Estudiantes SOLO ven sus propios reportes (ignorar usuario_id del query si intenta ver otros)
         usuario_id = auth.usuario_id;
-      } else if (auth.rol === 'trabajador' && !trabajador_asignado && !usuario_id) {
-        // Trabajadores por defecto ven reportes asignados a ellos
+      } else if (auth.rol === 'trabajador') {
+        // Trabajadores SOLO ven reportes asignados a ellos (ignorar trabajador_asignado del query si intenta ver otros)
         trabajador_asignado = auth.usuario_id;
+        // Limpiar usuario_id para que no interfiera
+        usuario_id = null;
       }
-      // Administrativo: NO aplica filtros automáticos, ve TODOS
+      // Administrativo: NO aplica filtros automáticos, puede ver TODOS o filtrar como quiera
     }
     
     const estado = queryParams.estado;
