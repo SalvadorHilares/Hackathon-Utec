@@ -8,7 +8,14 @@ const STAGE = process.env.STAGE || 'dev';
 
 async function handler(event) {
   try {
+    if (!WEBSOCKET_API_ID) {
+      console.error('WEBSOCKET_API_ID no está definido en las variables de entorno');
+      return { statusCode: 500 };
+    }
+    
     const endpoint = getWebSocketEndpoint(WEBSOCKET_API_ID, REGION, STAGE);
+    console.log('Endpoint WebSocket:', endpoint);
+    console.log('Event Records:', event.Records?.length || 0);
     
     // Procesar eventos de DynamoDB Stream
     for (const record of event.Records) {
@@ -50,6 +57,10 @@ async function handler(event) {
         
         console.log(`Encontradas ${todasLasConexiones.length} conexiones para notificar (${conexionesReporte.length} específicas + ${conexionesAll.length} generales)`);
         
+        if (todasLasConexiones.length === 0) {
+          console.log('⚠️ No hay conexiones activas para notificar');
+        }
+        
         // Enviar notificación a cada conexión
         const notificacionesExitosas = [];
         const notificacionesFallidas = [];
@@ -64,7 +75,9 @@ async function handler(event) {
               timestamp_notificacion: new Date().toISOString()
             };
             
+            console.log(`Enviando notificación a conexión ${conexion.connection_id} (reporte_id: ${conexion.reporte_id})`);
             await sendMessage(endpoint, conexion.connection_id, mensaje);
+            console.log(`✅ Notificación enviada exitosamente a ${conexion.connection_id}`);
             notificacionesExitosas.push(conexion.connection_id);
             
           } catch (error) {

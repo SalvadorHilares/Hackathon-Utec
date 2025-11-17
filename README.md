@@ -447,7 +447,11 @@ Content-Type: application/json
 }
 ```
 
-**Nota:** El `usuario_id` se obtiene automáticamente del token JWT. No es necesario enviarlo en el body.
+**⚠️ IMPORTANTE - Seguridad y Autenticación:**
+- El `usuario_id` se obtiene **automáticamente** del token JWT autenticado
+- **NO** envíes `usuario_id` en el body (será ignorado si lo envías)
+- El `usuario_id` se extrae del token JWT en el header `Authorization: Bearer <token>`
+- Esto garantiza que el reporte se asocie al usuario autenticado y previene falsificación de identidad
 
 **Response (201):**
 ```json
@@ -692,11 +696,14 @@ async function obtenerReporteCompleto(reporteId) {
 **Request Body:**
 ```json
 {
-  "trabajador_id": "trabajador-001",
-  "usuario_id": "admin-001",
-  "rol": "administrativo"
+  "trabajador_id": "trabajador-001"
 }
 ```
+
+**⚠️ IMPORTANTE - Autenticación:**
+- El `usuario_id` y `rol` se obtienen **automáticamente** del token JWT autenticado
+- **NO** envíes `usuario_id` ni `rol` en el body (serán ignorados si los envías)
+- Solo usuarios con rol `administrativo` pueden asignar reportes
 
 **Response (200):**
 ```json
@@ -719,11 +726,14 @@ async function obtenerReporteCompleto(reporteId) {
 **Request Body:**
 ```json
 {
-  "user_id": "admin-001",
-  "rol": "administrativo",
-  "notes": "Reporte resuelto completamente"
+  "notes": "Reporte resuelto completamente"  // Opcional
 }
 ```
+
+**⚠️ IMPORTANTE - Autenticación:**
+- El `usuario_id` y `rol` se obtienen **automáticamente** del token JWT autenticado
+- **NO** envíes `user_id` ni `rol` en el body (serán ignorados si los envías)
+- Solo usuarios con rol `administrativo` pueden cerrar reportes
 
 **Response (200):**
 ```json
@@ -1049,13 +1059,15 @@ ws.send(JSON.stringify({
 
 #### 1. Crear Reporte
 ```javascript
-// 1. Usuario crea un reporte (usuario_id se obtiene del token automáticamente)
+// 1. Usuario crea un reporte
+// ⚠️ IMPORTANTE: usuario_id y rol se obtienen automáticamente del token JWT
+// NO envíes estos campos en el body - serán ignorados
 const reporte = await crearReporte({
   tipo: 'mantenimiento',
   ubicacion: 'Edificio B, Baño 2do piso',
   descripcion: 'Grifo roto, gotea constantemente',
   nivel_urgencia: 'media'
-  // usuario_id y rol se obtienen del token JWT automáticamente
+  // usuario_id y rol se extraen del token JWT en el header Authorization
 });
 
 console.log('Reporte creado:', reporte.reporte_id);
