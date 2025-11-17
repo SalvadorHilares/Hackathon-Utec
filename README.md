@@ -2905,28 +2905,879 @@ window.addEventListener('nuevaNotificacion', (event) => {
 const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
 const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
 
-// 2. Crear reporte
-const reporte = await fetch(`${API_BASE_URL}/reportes`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    usuario_id: 'user-123',
-    tipo: 'seguridad',
-    ubicacion: 'Edificio A',
-    descripcion: 'Incidente',
-    nivel_urgencia: 'alta',
-    rol: 'estudiante'
-  })
-}).then(r => r.json());
+// 2. Registrar usuario (solo una vez)
+const usuario = await registrarUsuario('usuario@example.com', 'password123', 'estudiante');
 
-// 3. Conectar WebSocket
-const ws = new WebSocket(`${WS_BASE_URL}?reporte_id=${reporte.reporte_id}`);
+// 3. Iniciar sesión y obtener token
+const auth = await loginUsuario('usuario@example.com', 'password123');
+const token = auth.token; // Guardar en localStorage
+
+// 4. Crear reporte (con autenticación)
+const reporte = await crearReporte({
+  tipo: 'seguridad',
+  ubicacion: 'Edificio A',
+  descripcion: 'Incidente',
+  nivel_urgencia: 'alta'
+}, token);
+
+// 5. Conectar WebSocket (con token)
+const ws = new WebSocket(`${WS_BASE_URL}?token=${encodeURIComponent(token)}&reporte_id=${reporte.reporte_id}`);
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
   if (data.tipo === 'actualizacion_estado') {
     console.log('Estado actualizado:', data.estado);
   }
 };
+```
+
+---
+
+## 📖 Guía Completa de Ejemplos - Testing End-to-End
+
+Esta sección contiene ejemplos completos y listos para usar de todos los flujos del sistema. Puedes copiar y pegar estos ejemplos directamente en tu código o en la consola del navegador para probar.
+
+### 🔧 Configuración Inicial
+
+```javascript
+// Configuración base - Copiar al inicio de tu aplicación
+const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
+const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+
+// Helper para obtener token
+function getToken() {
+  return localStorage.getItem('token');
+}
+
+// Helper para hacer requests autenticados
+async function fetchAutenticado(url, options = {}) {
+  const token = getToken();
+  if (!token) {
+    throw new Error('No hay token. Por favor inicia sesión.');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...options.headers
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers
+  });
+
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario');
+    throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+  }
+
+  return response;
+}
+```
+
+---
+
+## 📖 Guía Completa de Ejemplos - Testing End-to-End
+
+Esta sección contiene ejemplos completos y listos para usar de todos los flujos del sistema. Puedes copiar y pegar estos ejemplos directamente en tu código o en la consola del navegador para probar.
+
+### 🔧 Configuración Inicial
+
+```javascript
+// Configuración base - Copiar al inicio de tu aplicación
+const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
+const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+
+// Helper para obtener token
+function getToken() {
+  return localStorage.getItem('token');
+}
+
+// Helper para hacer requests autenticados
+async function fetchAutenticado(url, options = {}) {
+  const token = getToken();
+  if (!token) {
+    throw new Error('No hay token. Por favor inicia sesión.');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+    ...options.headers
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers
+  });
+
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('usuario');
+    throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+  }
+
+  return response;
+}
+```
+
+---
+
+### 1️⃣ Flujo Completo: Estudiante (Crear y Monitorear Reporte)
+
+```javascript
+// ============================================
+// PASO 1: Registrar Usuario (solo primera vez)
+// ============================================
+async function registrarUsuario(email, password, rol) {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, rol })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Error al registrar');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const nuevoUsuario = await registrarUsuario('estudiante@test.com', 'password123', 'estudiante');
+console.log('Usuario registrado:', nuevoUsuario);
+
+// ============================================
+// PASO 2: Iniciar Sesión
+// ============================================
+async function loginUsuario(email, password) {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Error al iniciar sesión');
+  }
+  
+  const data = await response.json();
+  
+  // Guardar token y usuario
+  localStorage.setItem('token', data.token);
+  localStorage.setItem('usuario', JSON.stringify(data.usuario));
+  
+  return data;
+}
+
+// Ejecutar:
+const auth = await loginUsuario('estudiante@test.com', 'password123');
+console.log('Token:', auth.token);
+console.log('Usuario:', auth.usuario);
+
+// ============================================
+// PASO 3: Crear Reporte
+// ============================================
+async function crearReporte(datos) {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes`, {
+    method: 'POST',
+    body: JSON.stringify(datos)
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al crear reporte');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const reporte = await crearReporte({
+  tipo: 'mantenimiento',
+  ubicacion: 'Edificio B, Baño 2do piso',
+  descripcion: 'Grifo roto, gotea constantemente',
+  nivel_urgencia: 'media',
+  imagenes: [], // Opcional
+  videos: []   // Opcional
+});
+console.log('Reporte creado:', reporte);
+
+// ============================================
+// PASO 4: Conectar WebSocket para Monitorear
+// ============================================
+class WebSocketManager {
+  constructor(reporteId = null, token = null) {
+    this.reporteId = reporteId;
+    this.token = token || getToken();
+    this.ws = null;
+    
+    if (!this.token) {
+      throw new Error('Token JWT requerido');
+    }
+  }
+
+  connect() {
+    let url = `${WS_BASE_URL}?token=${encodeURIComponent(this.token)}`;
+    if (this.reporteId) {
+      url += `&reporte_id=${this.reporteId}`;
+    }
+
+    this.ws = new WebSocket(url);
+
+    this.ws.onopen = () => {
+      console.log('✅ WebSocket conectado');
+    };
+
+    this.ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('📨 Mensaje recibido:', data);
+      
+      if (data.tipo === 'actualizacion_estado') {
+        console.log(`🔄 Estado actualizado: ${data.estado} para reporte ${data.reporte_id}`);
+        // Aquí actualizarías tu UI
+      }
+    };
+
+    this.ws.onerror = (error) => {
+      console.error('❌ Error WebSocket:', error);
+    };
+
+    this.ws.onclose = () => {
+      console.log('🔌 WebSocket desconectado');
+    };
+  }
+
+  disconnect() {
+    if (this.ws) {
+      this.ws.close();
+    }
+  }
+}
+
+// Ejecutar:
+const wsManager = new WebSocketManager(reporte.reporte_id);
+wsManager.connect();
+
+// ============================================
+// PASO 5: Ver Mis Reportes
+// ============================================
+async function listarMisReportes() {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes`);
+  
+  if (!response.ok) {
+    throw new Error('Error al listar reportes');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const misReportes = await listarMisReportes();
+console.log('Mis reportes:', misReportes.reportes);
+
+// ============================================
+// PASO 6: Ver Detalle Completo de un Reporte
+// ============================================
+async function obtenerReporteCompleto(reporteId) {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/completo`);
+  
+  if (!response.ok) {
+    throw new Error('Error al obtener reporte');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const detalle = await obtenerReporteCompleto(reporte.reporte_id);
+console.log('Detalle completo:', detalle);
+console.log('Estado actual:', detalle.estado_actual);
+console.log('Historial:', detalle.historial_reciente);
+
+// ============================================
+// PASO 7: Actualizar Mi Reporte
+// ============================================
+async function actualizarReporte(reporteId, cambios) {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}`, {
+    method: 'PUT',
+    body: JSON.stringify(cambios)
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Error al actualizar');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const actualizado = await actualizarReporte(reporte.reporte_id, {
+  descripcion: 'Descripción actualizada - el grifo sigue roto',
+  nivel_urgencia: 'alta' // Cambiar urgencia
+});
+console.log('Reporte actualizado:', actualizado);
+```
+
+---
+
+### 2️⃣ Flujo Completo: Administrador (Panel Completo)
+
+```javascript
+// ============================================
+// PASO 1: Registrar Administrador
+// ============================================
+const admin = await registrarUsuario('admin@test.com', 'admin123', 'administrativo');
+console.log('Admin registrado:', admin);
+
+// ============================================
+// PASO 2: Iniciar Sesión como Admin
+// ============================================
+const authAdmin = await loginUsuario('admin@test.com', 'admin123');
+console.log('Admin autenticado:', authAdmin);
+
+// ============================================
+// PASO 3: Ver Todos los Reportes (Panel Admin)
+// ============================================
+async function listarTodosReportes(filtros = {}) {
+  const params = new URLSearchParams();
+  if (filtros.estado) params.append('estado', filtros.estado);
+  if (filtros.tipo) params.append('tipo', filtros.tipo);
+  if (filtros.nivel_urgencia) params.append('nivel_urgencia', filtros.nivel_urgencia);
+  if (filtros.orderBy) params.append('orderBy', filtros.orderBy);
+  if (filtros.limit) params.append('limit', filtros.limit);
+
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes?${params}`);
+  
+  if (!response.ok) {
+    throw new Error('Error al listar reportes');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar - Ver todos los pendientes ordenados por urgencia:
+const reportesPendientes = await listarTodosReportes({
+  estado: 'pendiente',
+  orderBy: 'urgencia', // Los críticos aparecen primero
+  limit: 50
+});
+console.log('Reportes pendientes (priorizados):', reportesPendientes.reportes);
+
+// ============================================
+// PASO 4: Conectar WebSocket para TODOS los Reportes
+// ============================================
+const wsAdmin = new WebSocketManager(null); // null = todos los reportes
+wsAdmin.connect();
+
+// Escuchar actualizaciones de cualquier reporte
+wsAdmin.ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.tipo === 'actualizacion_estado') {
+    console.log(`📢 Nuevo cambio: Reporte ${data.reporte_id} → ${data.estado}`);
+    // Actualizar solo ese reporte en la lista
+  }
+};
+
+// ============================================
+// PASO 5: Asignar Trabajador a un Reporte
+// ============================================
+async function asignarTrabajador(reporteId, trabajadorId) {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/asignar`, {
+    method: 'POST',
+    body: JSON.stringify({ trabajador_id: trabajadorId })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    if (response.status === 403) {
+      throw new Error('No tienes permisos. Se requiere rol administrativo.');
+    }
+    throw new Error(error.error || 'Error al asignar');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const asignacion = await asignarTrabajador(reporte.reporte_id, 'trabajador-001');
+console.log('Trabajador asignado:', asignacion);
+console.log('Execution ARN:', asignacion.execution_arn);
+
+// ============================================
+// PASO 6: Cerrar Reporte
+// ============================================
+async function cerrarReporte(reporteId, notes = '') {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/cerrar`, {
+    method: 'POST',
+    body: JSON.stringify({ notes: notes || 'Reporte resuelto completamente' })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    if (response.status === 403) {
+      throw new Error('No tienes permisos. Se requiere rol administrativo.');
+    }
+    throw new Error(error.error || 'Error al cerrar');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const cerrado = await cerrarReporte(reporte.reporte_id, 'Trabajo completado exitosamente');
+console.log('Reporte cerrado:', cerrado);
+
+// ============================================
+// PASO 7: Ver Historial de un Reporte
+// ============================================
+async function obtenerHistorial(reporteId) {
+  const response = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/historial`);
+  
+  if (!response.ok) {
+    throw new Error('Error al obtener historial');
+  }
+  
+  return await response.json();
+}
+
+// Ejecutar:
+const historial = await obtenerHistorial(reporte.reporte_id);
+console.log('Historial completo:', historial.historial);
+console.log('Total acciones:', historial.total_acciones);
+```
+
+---
+
+### 3️⃣ Flujo Completo: Trabajador (Actualizar Estado)
+
+```javascript
+// ============================================
+// PASO 1: Registrar Trabajador
+// ============================================
+const trabajador = await registrarUsuario('trabajador@test.com', 'trab123', 'estudiante');
+// Nota: Los trabajadores pueden tener rol 'estudiante' o un rol específico
+console.log('Trabajador registrado:', trabajador);
+
+// ============================================
+// PASO 2: Iniciar Sesión como Trabajador
+// ============================================
+const authTrabajador = await loginUsuario('trabajador@test.com', 'trab123');
+console.log('Trabajador autenticado:', authTrabajador);
+// El usuario_id del token será usado como trabajador_id
+
+// ============================================
+// PASO 3: Conectar WebSocket
+// ============================================
+const wsTrabajador = new WebSocket(`${WS_BASE_URL}?token=${encodeURIComponent(getToken())}`);
+
+wsTrabajador.onopen = () => {
+  console.log('✅ Trabajador conectado');
+};
+
+// ============================================
+// PASO 4: Recibir Asignación (simulado)
+// ============================================
+// En producción, el trabajador recibiría una notificación SNS
+// o verificaría sus reportes asignados
+async function verMisTrabajosAsignados() {
+  // Listar todos los reportes y filtrar por trabajador_asignado
+  const todos = await listarTodosReportes({ estado: 'en_atencion' });
+  const misTrabajos = todos.reportes.filter(r => 
+    r.trabajador_asignado === authTrabajador.usuario.usuario_id
+  );
+  return misTrabajos;
+}
+
+// Ejecutar:
+const misTrabajos = await verMisTrabajosAsignados();
+console.log('Mis trabajos asignados:', misTrabajos);
+
+// ============================================
+// PASO 5: Actualizar Estado - En Camino
+// ============================================
+function marcarEnCamino(reporteId, taskToken, ubicacion) {
+  const token = getToken();
+  wsTrabajador.send(JSON.stringify({
+    action: 'enCamino',
+    token: token,
+    reporte_id: reporteId,
+    trabajador_id: authTrabajador.usuario.usuario_id, // Debe coincidir con token
+    task_token: taskToken, // Recibido vía SNS cuando se asigna
+    ubicacion_trabajador: {
+      latitud: ubicacion.lat || -12.0464,
+      longitud: ubicacion.lng || -77.0428
+    },
+    comentarios: 'En camino al lugar del reporte'
+  }));
+}
+
+// Ejecutar (necesitas el task_token del Step Functions):
+// marcarEnCamino(reporte.reporte_id, 'task-token-xxx', { lat: -12.0464, lng: -77.0428 });
+
+// ============================================
+// PASO 6: Actualizar Estado - Llegó
+// ============================================
+function marcarLlego(reporteId, taskToken) {
+  const token = getToken();
+  wsTrabajador.send(JSON.stringify({
+    action: 'trabajadorLlego',
+    token: token,
+    reporte_id: reporteId,
+    trabajador_id: authTrabajador.usuario.usuario_id,
+    task_token: taskToken
+  }));
+}
+
+// Ejecutar:
+// marcarLlego(reporte.reporte_id, 'task-token-xxx');
+
+// ============================================
+// PASO 7: Actualizar Estado - Trabajo Terminado
+// ============================================
+function marcarTerminado(reporteId, taskToken, comentarios, imagenes = []) {
+  const token = getToken();
+  wsTrabajador.send(JSON.stringify({
+    action: 'trabajoTerminado',
+    token: token,
+    reporte_id: reporteId,
+    trabajador_id: authTrabajador.usuario.usuario_id,
+    task_token: taskToken,
+    comentarios: comentarios || 'Trabajo completado exitosamente',
+    imagenes_finales: imagenes
+  }));
+}
+
+// Ejecutar:
+// marcarTerminado(reporte.reporte_id, 'task-token-xxx', 'Reparación completada', []);
+```
+
+---
+
+### 4️⃣ Ejemplos de Todos los Endpoints
+
+#### A. Autenticación
+
+```javascript
+// Registrar Usuario
+const usuario = await fetch(`${API_BASE_URL}/auth/register`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: 'test@example.com',
+    password: 'password123',
+    rol: 'estudiante'
+  })
+}).then(r => r.json());
+
+// Login
+const auth = await fetch(`${API_BASE_URL}/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: 'test@example.com',
+    password: 'password123'
+  })
+}).then(r => r.json());
+```
+
+#### B. Reportes REST API
+
+```javascript
+// 1. Crear Reporte
+const crear = await fetchAutenticado(`${API_BASE_URL}/reportes`, {
+  method: 'POST',
+  body: JSON.stringify({
+    tipo: 'seguridad',
+    ubicacion: 'Edificio A, Aula 201',
+    descripcion: 'Puerta rota',
+    nivel_urgencia: 'alta',
+    imagenes: [],
+    videos: []
+  })
+}).then(r => r.json());
+
+// 2. Listar Reportes (con filtros)
+const listar = await fetchAutenticado(
+  `${API_BASE_URL}/reportes?estado=pendiente&orderBy=urgencia&limit=20`
+).then(r => r.json());
+
+// 3. Ver Reporte Simple
+const ver = await fetchAutenticado(
+  `${API_BASE_URL}/reportes/${reporteId}`
+).then(r => r.json());
+
+// 4. Ver Reporte Completo
+const completo = await fetchAutenticado(
+  `${API_BASE_URL}/reportes/${reporteId}/completo`
+).then(r => r.json());
+
+// 5. Actualizar Reporte
+const actualizar = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}`, {
+  method: 'PUT',
+  body: JSON.stringify({
+    descripcion: 'Descripción actualizada',
+    nivel_urgencia: 'critica'
+  })
+}).then(r => r.json());
+
+// 6. Asignar Trabajador (solo admin)
+const asignar = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/asignar`, {
+  method: 'POST',
+  body: JSON.stringify({
+    trabajador_id: 'trabajador-001'
+  })
+}).then(r => r.json());
+
+// 7. Cerrar Reporte (solo admin)
+const cerrar = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporteId}/cerrar`, {
+  method: 'POST',
+  body: JSON.stringify({
+    notes: 'Reporte resuelto'
+  })
+}).then(r => r.json());
+
+// 8. Obtener Historial
+const historial = await fetchAutenticado(
+  `${API_BASE_URL}/reportes/${reporteId}/historial`
+).then(r => r.json());
+```
+
+#### C. WebSocket
+
+```javascript
+// Conectar con token
+const token = getToken();
+const ws = new WebSocket(`${WS_BASE_URL}?token=${encodeURIComponent(token)}&reporte_id=${reporteId}`);
+
+// Escuchar mensajes
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Mensaje:', data);
+};
+
+// Solicitar estados
+ws.send(JSON.stringify({
+  action: 'obtenerEstados',
+  reporte_id: reporteId,
+  token: token
+}));
+
+// Trabajador: En camino
+ws.send(JSON.stringify({
+  action: 'enCamino',
+  token: token,
+  reporte_id: reporteId,
+  trabajador_id: 'trabajador-001',
+  task_token: 'task-token-xxx',
+  ubicacion_trabajador: { latitud: -12.0464, longitud: -77.0428 }
+}));
+```
+
+---
+
+### 5️⃣ Script Completo de Testing (Copiar y Pegar)
+
+```javascript
+// ============================================
+// SCRIPT COMPLETO DE TESTING
+// Copiar todo esto en la consola del navegador
+// ============================================
+
+(async function testCompleto() {
+  try {
+    // Configuración
+    const API_BASE_URL = 'https://iufx6tx21g.execute-api.us-east-1.amazonaws.com/dev';
+    const WS_BASE_URL = 'wss://z7unrfb2ub.execute-api.us-east-1.amazonaws.com/dev';
+    
+    function getToken() {
+      return localStorage.getItem('token');
+    }
+    
+    async function fetchAutenticado(url, options = {}) {
+      const token = getToken();
+      if (!token) throw new Error('No hay token');
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        ...options.headers
+      };
+      
+      const response = await fetch(url, { ...options, headers });
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        throw new Error('Sesión expirada');
+      }
+      return response;
+    }
+    
+    console.log('🧪 Iniciando tests...\n');
+    
+    // 1. Registrar usuario
+    console.log('1️⃣ Registrando usuario...');
+    const usuario = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: `test${Date.now()}@test.com`,
+        password: 'test123',
+        rol: 'estudiante'
+      })
+    }).then(r => r.json());
+    console.log('✅ Usuario registrado:', usuario);
+    
+    // 2. Login
+    console.log('\n2️⃣ Iniciando sesión...');
+    const auth = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: usuario.email,
+        password: 'test123'
+      })
+    }).then(r => r.json());
+    localStorage.setItem('token', auth.token);
+    localStorage.setItem('usuario', JSON.stringify(auth.usuario));
+    console.log('✅ Login exitoso:', auth.usuario);
+    
+    // 3. Crear reporte
+    console.log('\n3️⃣ Creando reporte...');
+    const reporte = await fetchAutenticado(`${API_BASE_URL}/reportes`, {
+      method: 'POST',
+      body: JSON.stringify({
+        tipo: 'mantenimiento',
+        ubicacion: 'Edificio A, Aula 101',
+        descripcion: 'Aire acondicionado no funciona',
+        nivel_urgencia: 'alta'
+      })
+    }).then(r => r.json());
+    console.log('✅ Reporte creado:', reporte);
+    
+    // 4. Listar mis reportes
+    console.log('\n4️⃣ Listando mis reportes...');
+    const misReportes = await fetchAutenticado(`${API_BASE_URL}/reportes`)
+      .then(r => r.json());
+    console.log('✅ Mis reportes:', misReportes.reportes.length);
+    
+    // 5. Ver detalle completo
+    console.log('\n5️⃣ Obteniendo detalle completo...');
+    const detalle = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporte.reporte_id}/completo`)
+      .then(r => r.json());
+    console.log('✅ Detalle:', {
+      reporte: detalle.reporte.estado,
+      estado_actual: detalle.estado_actual?.estado,
+      historial: detalle.total_acciones_historial
+    });
+    
+    // 6. Conectar WebSocket
+    console.log('\n6️⃣ Conectando WebSocket...');
+    const token = getToken();
+    const ws = new WebSocket(`${WS_BASE_URL}?token=${encodeURIComponent(token)}&reporte_id=${reporte.reporte_id}`);
+    
+    ws.onopen = () => {
+      console.log('✅ WebSocket conectado');
+      
+      // Solicitar estados
+      ws.send(JSON.stringify({
+        action: 'obtenerEstados',
+        reporte_id: reporte.reporte_id,
+        token: token
+      }));
+    };
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('📨 Mensaje WebSocket:', data.tipo || 'actualización');
+    };
+    
+    // Esperar 2 segundos para recibir mensajes
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // 7. Actualizar reporte
+    console.log('\n7️⃣ Actualizando reporte...');
+    const actualizado = await fetchAutenticado(`${API_BASE_URL}/reportes/${reporte.reporte_id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        descripcion: 'Descripción actualizada - problema más grave',
+        nivel_urgencia: 'critica'
+      })
+    }).then(r => r.json());
+    console.log('✅ Reporte actualizado:', actualizado);
+    
+    // Cerrar WebSocket
+    ws.close();
+    
+    console.log('\n✅ Todos los tests completados exitosamente!');
+    
+  } catch (error) {
+    console.error('❌ Error en test:', error.message);
+  }
+})();
+```
+
+---
+
+### 6️⃣ Manejo de Errores Completo
+
+```javascript
+// Wrapper completo con manejo de errores
+async function llamadaAPI(url, options = {}) {
+  try {
+    const response = await fetchAutenticado(url, options);
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({
+        error: `HTTP ${response.status}`,
+        mensaje: response.statusText
+      }));
+      
+      // Manejar errores específicos
+      if (response.status === 401) {
+        // Token expirado o inválido
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+      }
+      
+      if (response.status === 403) {
+        // Sin permisos
+        throw new Error(error.mensaje || 'No tienes permisos para realizar esta acción.');
+      }
+      
+      if (response.status === 404) {
+        throw new Error('Recurso no encontrado.');
+      }
+      
+      throw new Error(error.error || error.mensaje || 'Error desconocido');
+    }
+    
+    return await response.json();
+    
+  } catch (error) {
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      throw new Error('Error de conexión. Verifica tu internet.');
+    }
+    throw error;
+  }
+}
+
+// Uso:
+try {
+  const reporte = await llamadaAPI(`${API_BASE_URL}/reportes`, {
+    method: 'POST',
+    body: JSON.stringify({ tipo: 'seguridad', ... })
+  });
+  console.log('Éxito:', reporte);
+} catch (error) {
+  console.error('Error:', error.message);
+  // Mostrar mensaje al usuario
+  alert(error.message);
+}
 ```
 
 ---
