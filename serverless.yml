@@ -203,6 +203,7 @@ functions:
           route: enCamino
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
@@ -213,6 +214,7 @@ functions:
           route: trabajadorLlego
     environment:
       TABLA_ESTADO_TRABAJO: ${self:custom.tablas.estadoTrabajo}
+      TABLA_ESTADOS: ${self:custom.tablas.estados}
       TABLA_HISTORIAL: ${self:custom.tablas.historial}
       TOKEN_SECRET: ${env:TOKEN_SECRET, 'alerta-utec-123'}
 
