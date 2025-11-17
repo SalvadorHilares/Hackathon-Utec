@@ -1,12 +1,11 @@
 /**
  * Validar datos de creación de reporte
+ * NOTA: usuario_id ya no se valida aquí porque viene del token JWT
  */
 function validateCrearReporte(data) {
   const errors = [];
   
-  if (!data.usuario_id || typeof data.usuario_id !== 'string') {
-    errors.push('usuario_id es requerido y debe ser string');
-  }
+  // usuario_id ya no se valida - viene del token JWT autenticado
   
   if (!data.tipo || typeof data.tipo !== 'string') {
     errors.push('tipo es requerido y debe ser string');
