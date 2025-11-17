@@ -1,6 +1,7 @@
-const { getItem, putItem, getTimestamp } = require('../../shared/dynamodb');
+const { getItem, putItem, getTimestamp, generateUUID } = require('../../shared/dynamodb');
 const { sendTaskSuccess } = require('../../shared/stepfunctions');
 const { verifyJwtFromWebSocket } = require('../../utils/auth');
+const { sendMessage } = require('../../shared/websocket');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const TABLA_ESTADO_TRABAJO = process.env.TABLA_ESTADO_TRABAJO;
@@ -13,54 +14,63 @@ const TENANT_ID = process.env.TENANT_ID || 'utec';
 const s3Client = new S3Client({ region: process.env.REGION || 'us-east-1' });
 
 async function handler(event) {
+  const connectionId = event.requestContext?.connectionId;
+  const requestContext = event.requestContext;
+  const endpoint = requestContext ? `https://${requestContext.domainName}/${requestContext.stage}` : null;
+  
   try {
     // Verificar autenticación JWT
     const auth = verifyJwtFromWebSocket(event);
     if (!auth) {
-      return {
-        statusCode: 401,
-        body: JSON.stringify({
+      if (endpoint && connectionId) {
+        await sendMessage(endpoint, connectionId, {
           error: 'No autorizado',
           mensaje: 'Token JWT inválido o faltante. Debe incluir: {"token": "<jwt_token>", ...}'
-        })
-      };
+        });
+      }
+      return { statusCode: 401 };
     }
 
-    const connectionId = event.requestContext.connectionId;
+    if (!connectionId || !endpoint) {
+      console.error('Missing connectionId or endpoint in requestContext');
+      return { statusCode: 500 };
+    }
+
     const body = JSON.parse(event.body || '{}');
     const reporte_id = body.reporte_id;
     const trabajador_id = body.trabajador_id;
     const task_token = body.task_token;
     
-    if (!reporte_id || !trabajador_id || !task_token) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({
-          error: 'reporte_id, trabajador_id y task_token son requeridos'
-        })
-      };
+    if (!reporte_id || !trabajador_id) {
+      if (endpoint && connectionId) {
+        await sendMessage(endpoint, connectionId, {
+          error: 'Datos incompletos',
+          mensaje: 'reporte_id y trabajador_id son requeridos'
+        });
+      }
+      return { statusCode: 400 };
     }
 
     // Validar que el usuario tenga rol trabajador
     if (auth.rol !== 'trabajador') {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({
+      if (endpoint && connectionId) {
+        await sendMessage(endpoint, connectionId, {
           error: 'Acceso denegado',
           mensaje: 'Solo usuarios con rol trabajador pueden actualizar estados de trabajo'
-        })
-      };
+        });
+      }
+      return { statusCode: 403 };
     }
 
     // Validar que el trabajador_id del body coincida con el usuario_id del token
     if (trabajador_id !== auth.usuario_id) {
-      return {
-        statusCode: 403,
-        body: JSON.stringify({
+      if (endpoint && connectionId) {
+        await sendMessage(endpoint, connectionId, {
           error: 'Acceso denegado',
           mensaje: 'El trabajador_id no coincide con el usuario autenticado'
-        })
-      };
+        });
+      }
+      return { statusCode: 403 };
     }
     
     // Obtener estado trabajo actual
@@ -70,12 +80,13 @@ async function handler(event) {
     });
     
     if (!estadoTrabajo) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({
-          error: 'Estado trabajo no encontrado'
-        })
-      };
+      if (endpoint && connectionId) {
+        await sendMessage(endpoint, connectionId, {
+          error: 'Estado trabajo no encontrado',
+          mensaje: `No se encontró estado de trabajo para reporte_id: ${reporte_id} y trabajador_id: ${trabajador_id}`
+        });
+      }
+      return { statusCode: 404 };
     }
     
     // Actualizar estado trabajo
@@ -140,33 +151,65 @@ async function handler(event) {
     
     await putItem(TABLA_HISTORIAL, historial);
     
-    // Enviar TaskToken a Step Functions
-    await sendTaskSuccess(task_token, {
+    // Crear cambio de estado en TablaEstados (esto dispara notificación automática)
+    const estadoChange = {
+      estado_id: generateUUID(),
       reporte_id,
-      trabajador_id,
-      estado: 'terminado',
-      fecha_terminacion,
+      estado: 'trabajo_terminado',
+      descripcion: `Trabajo terminado por ${trabajador_id}`,
+      timestamp: fecha_terminacion,
+      actualizado_por: auth.usuario_id,
+      rol_actualizador: auth.rol,
       s3_key: s3Key
-    });
+    };
     
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
+    await putItem(TABLA_ESTADOS, estadoChange);
+    
+    // Enviar TaskToken a Step Functions (si existe)
+    if (task_token && task_token !== 'task-token-placeholder') {
+      try {
+        await sendTaskSuccess(task_token, {
+          reporte_id,
+          trabajador_id,
+          estado: 'terminado',
+          fecha_terminacion,
+          s3_key: s3Key
+        });
+      } catch (taskError) {
+        console.error('Error al enviar TaskSuccess a Step Functions:', taskError);
+        // Continuar aunque falle Step Functions
+      }
+    }
+    
+    // Enviar respuesta al cliente WebSocket
+    if (endpoint && connectionId) {
+      await sendMessage(endpoint, connectionId, {
         mensaje: 'Trabajo terminado exitosamente',
         estado_trabajo: estadoTrabajo,
+        reporte_id,
+        trabajador_id,
+        fecha_terminacion,
         s3_key: s3Key
-      })
-    };
+      });
+    }
+    
+    return { statusCode: 200 };
     
   } catch (error) {
     console.error('Error al terminar trabajo:', error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        error: 'Error interno del servidor',
-        mensaje: error.message
-      })
-    };
+    
+    if (endpoint && connectionId) {
+      try {
+        await sendMessage(endpoint, connectionId, {
+          error: 'Error interno del servidor',
+          mensaje: error.message
+        });
+      } catch (sendError) {
+        console.error('Error al enviar mensaje de error:', sendError);
+      }
+    }
+    
+    return { statusCode: 500 };
   }
 }
 
